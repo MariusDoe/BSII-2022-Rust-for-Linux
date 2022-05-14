@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -e
+set -x
+
+REPO_DIR=`dirname $0`
+
+$REPO_DIR/b -j12
+$REPO_DIR/b modules_install
+rm $REPO_DIR/_mod_inst/lib/modules/*/{build,source}
+scp    -P 2222 $REPO_DIR/bs2build/arch/x86_64/boot/bzImage root@127.0.0.1:/boot/vmlinuz-rust
+scp -r -P 2222 $REPO_DIR/_mod_inst/lib/*                   root@127.0.0.1:/lib/
+# ssh    -p 2222 root@127.0.0.1 "systemctl reboot --boot-loader-entry=linux-rust.conf"

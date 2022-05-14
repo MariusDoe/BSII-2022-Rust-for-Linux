@@ -6,11 +6,12 @@
 
 use crate::str::CStr;
 use crate::{bindings, c_types};
+use crate::{declare_constant_from_bindings, macros::DO_NEGATE};
 use alloc::{
     alloc::{AllocError, LayoutError},
     collections::TryReserveError,
 };
-use core::convert::From;
+use core::convert::{From, TryInto};
 use core::fmt;
 use core::num::TryFromIntError;
 use core::str::{self, Utf8Error};
@@ -318,6 +319,20 @@ pub mod code {
 pub struct Error(c_types::c_int);
 
 impl Error {
+    pub fn parse_int<T>(value: T) -> Result<T>
+    where
+        T: TryInto<c_types::c_int> + Copy,
+        <T as TryInto<c_types::c_int>>::Error: fmt::Debug,
+    {
+        match value
+            .try_into()
+            .expect("Couldn't convert value given to Error::parse_int into c_int")
+        {
+            e if e.is_negative() => Err(Error::from_kernel_errno(e)),
+            _ => Ok(value),
+        }
+    }
+
     /// Creates an [`Error`] from a kernel error code.
     ///
     /// It is a bug to pass an out-of-range `errno`. `EINVAL` would
@@ -375,6 +390,157 @@ impl Error {
     pub fn name(&self) -> Option<&'static CStr> {
         None
     }
+
+    pub fn as_err_ptr<T>(&self) -> *mut T {
+        self.0 as *mut _
+    }
+}
+
+macro_rules! declare_error {
+    ($name:ident, $doc:expr) => {
+        declare_constant_from_bindings!($name, $doc, i32, DO_NEGATE);
+    };
+}
+
+#[macro_export]
+macro_rules! ret_err_ptr {
+    ($ex:expr) => {
+        match $ex {
+            Ok(val) => val,
+            Err(err) => return err.as_err_ptr(),
+        }
+    };
+}
+
+#[rustfmt::skip]
+impl Error {
+    // See `man 3 errno`.
+    declare_error!(E2BIG,            "Argument list too long (POSIX.1-2001).");
+    declare_error!(EACCES,           "Permission denied (POSIX.1-2001).");
+    declare_error!(EADDRINUSE,       "Address already in use (POSIX.1-2001).");
+    declare_error!(EADDRNOTAVAIL,    "Address not available (POSIX.1-2001).");
+    declare_error!(EAFNOSUPPORT,     "Address family not supported (POSIX.1-2001).");
+    declare_error!(EAGAIN,           "Resource temporarily unavailable  (may  be  the  same  value  as  EWOULDBLOCK) (POSIX.1-2001).");
+    declare_error!(EALREADY,         "Connection already in progress (POSIX.1-2001).");
+    declare_error!(EBADE,            "Invalid exchange.");
+    declare_error!(EBADF,            "Bad file descriptor (POSIX.1-2001).");
+    declare_error!(EBADFD,           "File descriptor in bad state.");
+    declare_error!(EBADMSG,          "Bad message (POSIX.1-2001).");
+    declare_error!(EBADR,            "Invalid request descriptor.");
+    declare_error!(EBADRQC,          "Invalid request code.");
+    declare_error!(EBADSLT,          "Invalid slot.");
+    declare_error!(EBUSY,            "Device or resource busy (POSIX.1-2001).");
+    declare_error!(ECANCELED,        "Operation canceled (POSIX.1-2001).");
+    declare_error!(ECHILD,           "No child processes (POSIX.1-2001).");
+    declare_error!(ECHRNG,           "Channel number out of range.");
+    declare_error!(ECOMM,            "Communication error on send.");
+    declare_error!(ECONNABORTED,     "Connection aborted (POSIX.1-2001).");
+    declare_error!(ECONNREFUSED,     "Connection refused (POSIX.1-2001).");
+    declare_error!(ECONNRESET,       "Connection reset (POSIX.1-2001).");
+    declare_error!(EDEADLK,          "Resource deadlock avoided (POSIX.1-2001).");
+    declare_error!(EDEADLOCK,        "On  most  architectures,  a synonym for EDEADLK.  On some architectures (e.g., Linux MIPS, PowerPC, SPARC), it is a separate error code \"File  locking  dead-lock error\".");
+    declare_error!(EDESTADDRREQ,     "Destination address required (POSIX.1-2001).");
+    declare_error!(EDOM,             "Mathematics argument out of domain of function (POSIX.1, C99).");
+    declare_error!(EDQUOT,           "Disk quota exceeded (POSIX.1-2001).");
+    declare_error!(EEXIST,           "File exists (POSIX.1-2001).");
+    declare_error!(EFAULT,           "Bad address (POSIX.1-2001).");
+    declare_error!(EFBIG,            "File too large (POSIX.1-2001).");
+    declare_error!(EHOSTDOWN,        "Host is down.");
+    declare_error!(EHOSTUNREACH,     "Host is unreachable (POSIX.1-2001).");
+    declare_error!(EHWPOISON,        "Memory page has hardware error.");
+    declare_error!(EIDRM,            "Identifier removed (POSIX.1-2001).");
+    declare_error!(EILSEQ,           "Invalid or incomplete multibyte or wide character (POSIX.1, C99).");
+    declare_error!(EINPROGRESS,      "Operation in progress (POSIX.1-2001).");
+    declare_error!(EINTR,            "Interrupted function call (POSIX.1-2001); see signal(7).");
+    declare_error!(EINVAL,           "Invalid argument (POSIX.1-2001).");
+    declare_error!(EIO,              "Input/output error (POSIX.1-2001).");
+    declare_error!(EISCONN,          "Socket is connected (POSIX.1-2001).");
+    declare_error!(EISDIR,           "Is a directory (POSIX.1-2001).");
+    declare_error!(EISNAM,           "Is a named type file.");
+    declare_error!(EKEYEXPIRED,      "Key has expired.");
+    declare_error!(EKEYREJECTED,     "Key was rejected by service.");
+    declare_error!(EKEYREVOKED,      "Key has been revoked.");
+    declare_error!(EL2HLT,           "Level 2 halted.");
+    declare_error!(EL2NSYNC,         "Level 2 not synchronized.");
+    declare_error!(EL3HLT,           "Level 3 halted.");
+    declare_error!(EL3RST,           "Level 3 reset.");
+    declare_error!(ELIBACC,          "Cannot access a needed shared library.");
+    declare_error!(ELIBBAD,          "Accessing a corrupted shared library.");
+    declare_error!(ELIBMAX,          "Attempting to link in too many shared libraries.");
+    declare_error!(ELIBSCN,          ".lib section in a.out corrupted");
+    declare_error!(ELIBEXEC,         "Cannot exec a shared library directly.");
+    declare_error!(ELNRNG,           "Link number out of range.");
+    declare_error!(ELOOP,            "Too many levels of symbolic links (POSIX.1-2001).");
+    declare_error!(EMEDIUMTYPE,      "Wrong medium type.");
+    declare_error!(EMFILE,           "Too  many  open  files  (POSIX.1-2001).   Commonly  caused  by  exceeding  the RLIMIT_NOFILE resource limit described in getrlimit(2).  Can also be caused by exceeding the limit specified in /proc/sys/fs/nr_open.");
+    declare_error!(EMLINK,           "Too many links (POSIX.1-2001).");
+    declare_error!(EMSGSIZE,         "Message too long (POSIX.1-2001).");
+    declare_error!(EMULTIHOP,        "Multihop attempted (POSIX.1-2001).");
+    declare_error!(ENAMETOOLONG,     "Filename too long (POSIX.1-2001).");
+    declare_error!(ENETDOWN,         "Network is down (POSIX.1-2001).");
+    declare_error!(ENETRESET,        "Connection aborted by network (POSIX.1-2001).");
+    declare_error!(ENETUNREACH,      "Network unreachable (POSIX.1-2001).");
+    declare_error!(ENFILE,           "Too many open files in system (POSIX.1-2001).  On Linux, this  is  probably  a result of encountering the /proc/sys/fs/file-max limit (see proc(5)).");
+    declare_error!(ENOANO,           "No anode.");
+    declare_error!(ENOBUFS,          "No buffer space available (POSIX.1 (XSI STREAMS option)).");
+    declare_error!(ENODATA,          "No message is available on the STREAM head read queue (POSIX.1-2001).");
+    declare_error!(ENODEV,           "No such device (POSIX.1-2001).");
+    declare_error!(ENOENT,           "No such file or directory (POSIX.1-2001).");
+    declare_error!(ENOEXEC,          "Exec format error (POSIX.1-2001).");
+    declare_error!(ENOKEY,           "Required key not available.");
+    declare_error!(ENOLCK,           "No locks available (POSIX.1-2001).");
+    declare_error!(ENOLINK,          "Link has been severed (POSIX.1-2001).");
+    declare_error!(ENOMEDIUM,        "No medium found.");
+    declare_error!(ENOMEM,           "Not enough space/cannot allocate memory (POSIX.1-2001).");
+    declare_error!(ENOMSG,           "No message of the desired type (POSIX.1-2001).");
+    declare_error!(ENONET,           "Machine is not on the network.");
+    declare_error!(ENOPKG,           "Package not installed.");
+    declare_error!(ENOPROTOOPT,      "Protocol not available (POSIX.1-2001).");
+    declare_error!(ENOSPC,           "No space left on device (POSIX.1-2001).");
+    declare_error!(ENOSR,            "No STREAM resources (POSIX.1 (XSI STREAMS option)).");
+    declare_error!(ENOSTR,           "Not a STREAM (POSIX.1 (XSI STREAMS option)).");
+    declare_error!(ENOSYS,           "Function not implemented (POSIX.1-2001).");
+    declare_error!(ENOTBLK,          "Block device required.");
+    declare_error!(ENOTCONN,         "The socket is not connected (POSIX.1-2001).");
+    declare_error!(ENOTDIR,          "Not a directory (POSIX.1-2001).");
+    declare_error!(ENOTEMPTY,        "Directory not empty (POSIX.1-2001).");
+    declare_error!(ENOTRECOVERABLE,  "State not recoverable (POSIX.1-2008).");
+    declare_error!(ENOTSOCK,         "Not a socket (POSIX.1-2001).");
+    declare_error!(ENOTTY,           "Inappropriate I/O control operation (POSIX.1-2001).");
+    declare_error!(ENOTUNIQ,         "Name not unique on network.");
+    declare_error!(ENXIO,            "No such device or address (POSIX.1-2001).");
+    declare_error!(EOPNOTSUPP,       "Operation not supported on socket (POSIX.1-2001).");
+    declare_error!(EOVERFLOW,        "Value too large to be stored in data type (POSIX.1-2001).");
+    declare_error!(EOWNERDEAD,       "Owner died (POSIX.1-2008).");
+    declare_error!(EPERM,            "Operation not permitted (POSIX.1-2001).");
+    declare_error!(EPFNOSUPPORT,     "Protocol family not supported.");
+    declare_error!(EPIPE,            "Broken pipe (POSIX.1-2001).");
+    declare_error!(EPROTO,           "Protocol error (POSIX.1-2001).");
+    declare_error!(EPROTONOSUPPORT,  "Protocol not supported (POSIX.1-2001).");
+    declare_error!(EPROTOTYPE,       "Protocol wrong type for socket (POSIX.1-2001).");
+    declare_error!(ERANGE,           "Result too large (POSIX.1, C99).");
+    declare_error!(EREMCHG,          "Remote address changed.");
+    declare_error!(EREMOTE,          "Object is remote.");
+    declare_error!(EREMOTEIO,        "Remote I/O error.");
+    declare_error!(ERESTART,         "Interrupted system call should be restarted.");
+    declare_error!(ERFKILL,          "Operation not possible due to RF-kill.");
+    declare_error!(EROFS,            "Read-only filesystem (POSIX.1-2001).");
+    declare_error!(ESHUTDOWN,        "Cannot send after transport endpoint shutdown.");
+    declare_error!(ESPIPE,           "Invalid seek (POSIX.1-2001).");
+    declare_error!(ESOCKTNOSUPPORT,  "Socket type not supported.");
+    declare_error!(ESRCH,            "No such process (POSIX.1-2001).");
+    declare_error!(ESTALE,           "Stale file handle (POSIX.1-2001).");
+    declare_error!(ESTRPIPE,         "Streams pipe error.");
+    declare_error!(ETIME,            "Timer expired (POSIX.1 (XSI STREAMS option)).");
+    declare_error!(ETIMEDOUT,        "Connection timed out (POSIX.1-2001).");
+    declare_error!(ETOOMANYREFS,     "Too many references: cannot splice.");
+    declare_error!(ETXTBSY,          "Text file busy (POSIX.1-2001).");
+    declare_error!(EUCLEAN,          "Structure needs cleaning.");
+    declare_error!(EUNATCH,          "Protocol driver not attached.");
+    declare_error!(EUSERS,           "Too many users.");
+    declare_error!(EWOULDBLOCK,      "Operation would block (may be same value as EAGAIN) (POSIX.1-2001).");
+    declare_error!(EXDEV,            "Improper link (POSIX.1-2001).");
+    declare_error!(EXFULL,           "Exchange full.");
 }
 
 impl fmt::Debug for Error {

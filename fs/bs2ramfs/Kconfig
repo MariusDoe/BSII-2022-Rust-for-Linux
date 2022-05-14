@@ -1,0 +1,6 @@
+config BS2_RAMFS
+    tristate "BS2 ramfs"
+    depends on MMU && RUST
+    default n
+    help
+      Enables the rust implementation of ramfs.

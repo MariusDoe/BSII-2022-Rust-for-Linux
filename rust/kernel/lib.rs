@@ -55,6 +55,8 @@ pub mod gpio;
 pub mod hwrng;
 pub mod irq;
 pub mod kasync;
+#[macro_use]
+pub mod fs;
 pub mod miscdev;
 pub mod mm;
 #[cfg(CONFIG_NET)]
@@ -90,6 +92,8 @@ pub mod io_buffer;
 #[cfg(CONFIG_HAS_IOMEM)]
 pub mod io_mem;
 pub mod iov_iter;
+#[macro_use]
+mod macros;
 pub mod of;
 pub mod platform;
 mod types;

@@ -4,6 +4,7 @@
 //!
 //! C header: [`include/linux/types.h`](../../../../include/linux/types.h)
 
+use crate::declare_constant_from_bindings;
 use crate::{
     bindings, c_types,
     sync::{Ref, RefBorrow},
@@ -13,27 +14,92 @@ use core::{
     cell::UnsafeCell,
     marker::PhantomData,
     mem::MaybeUninit,
-    ops::{self, Deref, DerefMut},
+    ops::{self, BitAnd, BitOr, Deref, DerefMut},
     pin::Pin,
     ptr::NonNull,
 };
+
+pub type UserNamespace = bindings::user_namespace;
+pub type Iattr = bindings::iattr;
+pub type Path = bindings::path;
+pub type Kstat = bindings::kstat;
+pub type Dev = bindings::dev_t;
+pub type Page = bindings::page;
+pub type AddressSpace = bindings::address_space;
 
 /// Permissions.
 ///
 /// C header: [`include/uapi/linux/stat.h`](../../../../include/uapi/linux/stat.h)
 ///
 /// C header: [`include/linux/stat.h`](../../../../include/linux/stat.h)
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Mode(bindings::umode_t);
+pub type ModeInt = u16;
 
 impl Mode {
     /// Creates a [`Mode`] from an integer.
-    pub fn from_int(m: u16) -> Mode {
+    pub const fn from_int(m: ModeInt) -> Mode {
         Mode(m)
     }
 
     /// Returns the mode as an integer.
-    pub fn as_int(&self) -> u16 {
+    pub fn as_int(&self) -> ModeInt {
         self.0
+    }
+}
+
+#[rustfmt::skip]
+impl Mode {
+    // See `man 7 inode`.
+
+    // file type
+    declare_constant_from_bindings!(S_IFMT, "bit mask for the file type bit field");
+
+    declare_constant_from_bindings!(S_IFSOCK, "socket");
+    declare_constant_from_bindings!(S_IFLNK,  "symbolic link");
+    declare_constant_from_bindings!(S_IFREG,  "regular file");
+    declare_constant_from_bindings!(S_IFBLK,  "block device");
+    declare_constant_from_bindings!(S_IFDIR,  "directory");
+    declare_constant_from_bindings!(S_IFCHR,  "character device");
+    declare_constant_from_bindings!(S_IFIFO,  "FIFO");
+
+    // file mode component of the st_mode field
+    declare_constant_from_bindings!(S_ISUID,  "set-user-ID bit (see execve(2))");
+    declare_constant_from_bindings!(S_ISGID,  "set-group-ID bit (see below)");
+    declare_constant_from_bindings!(S_ISVTX,  "sticky bit (see below)");
+
+    declare_constant_from_bindings!(S_IRWXU,  "owner has read, write, and execute permission");
+    declare_constant_from_bindings!(S_IRUSR,  "owner has read permission");
+    declare_constant_from_bindings!(S_IWUSR,  "owner has write permission");
+    declare_constant_from_bindings!(S_IXUSR,  "owner has execute permission");
+
+    declare_constant_from_bindings!(S_IRWXG,  "group has read, write, and execute permission");
+    declare_constant_from_bindings!(S_IRGRP,  "group has read permission");
+    declare_constant_from_bindings!(S_IWGRP,  "group has write permission");
+    declare_constant_from_bindings!(S_IXGRP,  "group has execute permission");
+
+    declare_constant_from_bindings!(S_IRWXO,  "others (not in group) have read, write, and execute permission");
+    declare_constant_from_bindings!(S_IROTH,  "others have read permission");
+    declare_constant_from_bindings!(S_IWOTH,  "others have write permission");
+    declare_constant_from_bindings!(S_IXOTH,  "others have execute permission");
+
+    // extras
+    declare_constant_from_bindings!(S_IRWXUGO, "");
+}
+
+impl BitAnd for Mode {
+    type Output = Self;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Self(self.0 & rhs.0)
+    }
+}
+
+impl BitOr for Mode {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
     }
 }
 

@@ -25,6 +25,8 @@
 #include <linux/sched/signal.h>
 #include <linux/gfp.h>
 #include <linux/highmem.h>
+#include <linux/pagemap.h>
+#include <linux/uaccess.h>
 #include <linux/uio.h>
 #include <linux/errname.h>
 #include <linux/mutex.h>
@@ -637,3 +639,30 @@ static_assert(
 	__alignof__(size_t) == __alignof__(uintptr_t),
 	"Rust code expects C `size_t` to match Rust `usize`"
 );
+
+void rust_helper_dget(struct dentry *dentry)
+{
+	dget(dentry);
+}
+EXPORT_SYMBOL_GPL(rust_helper_dget);
+
+void rust_helper_mapping_set_unevictable(struct address_space *mapping)
+{
+	mapping_set_unevictable(mapping);
+}
+EXPORT_SYMBOL_GPL(rust_helper_mapping_set_unevictable);
+
+void rust_helper_mapping_set_gfp_mask(struct address_space *mapping, gfp_t mask)
+{
+	mapping_set_gfp_mask(mapping, mask);
+}
+EXPORT_SYMBOL_GPL(rust_helper_mapping_set_gfp_mask);
+
+const gfp_t RUST_HELPER_GFP_HIGHUSER = GFP_HIGHUSER;
+EXPORT_SYMBOL_GPL(RUST_HELPER_GFP_HIGHUSER);
+
+#if !defined(CONFIG_ARM)
+// See https://github.com/rust-lang/rust-bindgen/issues/1671
+static_assert(__builtin_types_compatible_p(size_t, uintptr_t),
+	"size_t must match uintptr_t, what architecture is this??");
+#endif

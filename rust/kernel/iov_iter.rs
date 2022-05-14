@@ -17,7 +17,7 @@ use crate::{
 ///
 /// The pointer `IovIter::ptr` is non-null and valid.
 pub struct IovIter {
-    ptr: *mut bindings::iov_iter,
+    pub(crate) ptr: *mut bindings::iov_iter,
 }
 
 impl IovIter {
