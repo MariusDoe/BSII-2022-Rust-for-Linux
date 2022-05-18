@@ -140,24 +140,16 @@ impl<T: AddressSpaceOperations> AddressSpaceOperationsVtable<T> {
         } else {
             None
         },
-        set_page_dirty: if T::TO_USE.set_page_dirty {
-            Some(set_page_dirty_callback::<T>)
-        } else {
-            None
-        },
         writepage: None,
         writepages: None,
-        readpages: None,
         readahead: None,
         bmap: None,
-        invalidatepage: None,
         releasepage: None,
         freepage: None,
         direct_IO: None,
         migratepage: None,
         isolate_page: None,
         putback_page: None,
-        launder_page: None,
         is_partially_uptodate: None,
         is_dirty_writeback: None,
         error_remove_page: None,
