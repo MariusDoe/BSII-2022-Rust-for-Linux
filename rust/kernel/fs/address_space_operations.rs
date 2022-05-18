@@ -8,9 +8,8 @@ use core::marker;
 
 use crate::{
     bindings, c_types,
-    error::{Error, Result},
+    error::{from_kernel_result, Error, Result},
     file::File,
-    from_kernel_result,
     fs::BuildVtable,
     types::{AddressSpace, Page},
 };

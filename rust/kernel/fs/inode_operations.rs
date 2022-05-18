@@ -8,10 +8,10 @@ use core::marker;
 
 use crate::{
     bindings, c_types,
-    error::{Error, Result},
-    from_kernel_result,
+    error::{from_kernel_result, Error, Result},
     fs::{dentry::Dentry, inode::Inode, BuildVtable},
     print::ExpectK,
+    ret_err_ptr,
     str::CStr,
     types::{Dev, Iattr, Kstat, Mode, ModeInt, Path, UserNamespace},
 };

@@ -8,8 +8,7 @@ use core::marker;
 
 use crate::{
     bindings, c_types,
-    error::{Error, Result},
-    from_kernel_result,
+    error::{from_kernel_result, Error, Result},
     fs::dentry::Dentry,
     fs::inode::Inode,
     print::ExpectK,
