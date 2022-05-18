@@ -9,7 +9,7 @@ use core::marker;
 use crate::{
     bindings, c_types,
     error::{Error, Result},
-    file::{File, FileRef},
+    file::File,
     from_kernel_result,
     fs::BuildVtable,
     types::{AddressSpace, Page},
@@ -69,7 +69,7 @@ unsafe extern "C" fn readpage_callback<T: AddressSpaceOperations>(
         let address_space = (*file).f_mapping;
         let a_ops = &*((*address_space).private_data as *const T);
         from_kernel_result! {
-            a_ops.readpage(&FileRef::from_ptr(file), &mut (*page)).map(|()| 0)
+            a_ops.readpage(&File::from_ptr(file), &mut (*page)).map(|()| 0)
         }
     }
 }
@@ -85,7 +85,7 @@ unsafe extern "C" fn write_begin_callback<T: AddressSpaceOperations>(
 ) -> c_types::c_int {
     unsafe {
         let a_ops = &*((*mapping).private_data as *const T);
-        let file = (!file.is_null()).then(|| FileRef::from_ptr(file));
+        let file = (!file.is_null()).then(|| File::from_ptr(file));
         from_kernel_result! {
             a_ops.write_begin(file.as_deref(), &mut (*mapping), pos, len, flags, pagep, fsdata).map(|()| 0)
         }
@@ -103,7 +103,7 @@ unsafe extern "C" fn write_end_callback<T: AddressSpaceOperations>(
 ) -> c_types::c_int {
     unsafe {
         let a_ops = &*((*mapping).private_data as *const T);
-        let file = (!file.is_null()).then(|| FileRef::from_ptr(file));
+        let file = (!file.is_null()).then(|| File::from_ptr(file));
         from_kernel_result! {
                 a_ops.write_end(file.as_deref(), &mut (*mapping), pos, len, copied, &mut (*page), fsdata).map(|x| x as i32)
         }

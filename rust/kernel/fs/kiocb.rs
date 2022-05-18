@@ -36,8 +36,10 @@ impl Kiocb {
     }
 
     pub fn get_file(&mut self) -> File {
-        let file = unsafe { (*(self.as_ptr_mut())).ki_filp };
-        File { ptr: file }
+        unsafe {
+            let file = (*(self.as_ptr_mut())).ki_filp;
+            File::from_ptr(file)
+        }
     }
 
     pub fn get_offset(&mut self) -> u64 {
