@@ -4,8 +4,7 @@ use crate::{
     bindings,
     c_types::*,
     error::Error,
-    file::File,
-    file_operations::SeekFrom,
+    file::{File, SeekFrom},
     fs::{
         dentry::Dentry, from_kernel_err_ptr, inode::Inode, kiocb::Kiocb, super_block::SuperBlock,
         super_operations::Kstatfs, DeclaredFileSystemType, FileSystemBase,
