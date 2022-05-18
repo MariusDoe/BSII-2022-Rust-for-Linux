@@ -1,3 +1,4 @@
+use core::cell::UnsafeCell;
 use core::mem;
 use core::ops::{Deref, DerefMut};
 
@@ -38,7 +39,8 @@ impl Kiocb {
     pub fn get_file(&mut self) -> File {
         unsafe {
             let file = (*(self.as_ptr_mut())).ki_filp;
-            File::from_ptr(file)
+            // TODO: check whether this is safe
+            File(UnsafeCell::new(*file))
         }
     }
 
