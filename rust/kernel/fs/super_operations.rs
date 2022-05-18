@@ -235,18 +235,6 @@ unsafe extern "C" fn show_options_callback<T: SuperOperations>(
 //     }
 // }
 
-// unsafe extern "C" fn bdev_try_to_free_page_callback<T: SuperOperations>(
-//     sb: *mut bindings::super_block,
-//     page: *mut bindings::page, // TODO
-//     wait: bindings::gfp_t, // TODO
-// ) -> c_types::c_int {
-//     from_kernel_result! {
-//         let s_ops = &*((*sb).s_fs_info as *const T);
-//         s_ops.show_stats(&SuperBlock::from_ptr(sb), &Page::from_ptr(page), wait)?;
-//         Ok(0)
-//     }
-// }
-
 // unsafe extern "C" fn nr_cached_objects_callback<T: SuperOperations>(
 //     sb: *mut bindings::super_block,
 //     sc: *mut bindings::shrink_control, // TODO
@@ -367,11 +355,6 @@ impl<T: SuperOperations> SuperOperationsVtable<T> {
         // } else {
         //     None
         // },
-        // bdev_try_to_free_page: if T::TO_USE.bdev_try_to_free_page {
-        //     Some(bdev_try_to_free_page_callback::<T>)
-        // } else {
-        //     None
-        // },
         // nr_cached_objects: if T::TO_USE.nr_cached_objects {
         //     Some(nr_cached_objects_callback::<T>)
         // } else {
@@ -399,7 +382,6 @@ impl<T: SuperOperations> SuperOperationsVtable<T> {
         show_devname: None,
         show_path: None,
         show_stats: None,
-        bdev_try_to_free_page: None,
         nr_cached_objects: None,
         free_cached_objects: None,
         get_dquots: None,
@@ -479,9 +461,6 @@ pub struct ToUse {
     /// the `show_stats` field of [`struct super_operations`].
     pub show_stats: bool,
 
-    /// the `bdev_try_to_free_page` field of [`struct super_operations`].
-    pub bdev_try_to_free_page: bool,
-
     /// the `nr_cached_objects` field of [`struct super_operations`].
     pub nr_cached_objects: bool,
 
@@ -512,7 +491,6 @@ pub const USE_NONE: ToUse = ToUse {
     show_devname: false,
     show_path: false,
     show_stats: false,
-    bdev_try_to_free_page: false,
     nr_cached_objects: false,
     free_cached_objects: false,
 };
@@ -607,10 +585,6 @@ pub trait SuperOperations: Send + Sync + Sized + Default {
     // }
 
     // fn show_stats(&self, _s: &SeqFile, _root: &Dentry) -> Result {
-    //     Err(Error::EINVAL)
-    // }
-
-    // fn bdev_try_to_free_page(&self, _sb: &SuperBlock, _page: &Page, _wait: GfpT) -> Result {
     //     Err(Error::EINVAL)
     // }
 
