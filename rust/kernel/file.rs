@@ -56,6 +56,10 @@ impl File {
         unsafe { &*ptr.cast() }
     }
 
+    pub(crate) fn as_mut_ptr(&self) -> *mut bindings::file {
+        self.0.get()
+    }
+
     /// Returns the current seek/cursor/pointer position (`struct file::f_pos`).
     pub fn pos(&self) -> u64 {
         // SAFETY: The file is valid because the shared reference guarantees a nonzero refcount.

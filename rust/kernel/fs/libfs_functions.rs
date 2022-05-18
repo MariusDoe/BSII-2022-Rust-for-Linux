@@ -25,14 +25,15 @@ pub fn generic_file_write_iter(iocb: &mut Kiocb, iter: &mut IovIter) -> Result<u
 }
 
 pub fn generic_file_mmap(file: &File, vma: &mut bindings::vm_area_struct) -> Result {
-    Error::parse_int(unsafe { bindings::generic_file_mmap(file.ptr, vma as *mut _) }).map(|_| ())
+    Error::parse_int(unsafe { bindings::generic_file_mmap(file.as_mut_ptr(), vma as *mut _) })
+        .map(|_| ())
 }
 
 pub fn noop_fsync(file: &File, start: u64, end: u64, datasync: bool) -> Result<u32> {
     let start = start as _;
     let end = end as _;
     let datasync = if datasync { 1 } else { 0 };
-    let res = unsafe { bindings::noop_fsync(file.ptr, start, end, datasync) };
+    let res = unsafe { bindings::noop_fsync(file.as_mut_ptr(), start, end, datasync) };
     if res == 0 {
         Ok(0)
     } else {
@@ -43,9 +44,9 @@ pub fn noop_fsync(file: &File, start: u64, end: u64, datasync: bool) -> Result<u
 
 pub fn generic_file_llseek(file: &File, pos: SeekFrom) -> Result<u64> {
     let (offset, whence) = pos.into_pos_and_whence();
-    Error::parse_int(
-        unsafe { bindings::generic_file_llseek(file.ptr, offset as _, whence as _) } as _,
-    )
+    Error::parse_int(unsafe {
+        bindings::generic_file_llseek(file.as_mut_ptr(), offset as _, whence as _)
+    } as _)
 }
 
 pub fn generic_file_splice_read(
@@ -56,7 +57,7 @@ pub fn generic_file_splice_read(
     flags: u32,
 ) -> Result<usize> {
     Error::parse_int(unsafe {
-        bindings::generic_file_splice_read(file.ptr, pos, pipe as *mut _, len, flags) as _
+        bindings::generic_file_splice_read(file.as_mut_ptr(), pos, pipe as *mut _, len, flags) as _
     })
 }
 
@@ -68,7 +69,7 @@ pub fn iter_file_splice_write(
     flags: u32,
 ) -> Result<usize> {
     Error::parse_int(unsafe {
-        bindings::iter_file_splice_write(pipe as *mut _, file.ptr, pos, len, flags) as _
+        bindings::iter_file_splice_write(pipe as *mut _, file.as_mut_ptr(), pos, len, flags) as _
     })
 }
 
@@ -215,7 +216,8 @@ pub fn kill_litter_super(sb: &mut SuperBlock) {
 }
 
 pub fn simple_readpage(file: &File, page: &mut Page) -> Result {
-    Error::parse_int(unsafe { bindings::simple_readpage(file.ptr, page as *mut _) }).map(|_| ())
+    Error::parse_int(unsafe { bindings::simple_readpage(file.as_mut_ptr(), page as *mut _) })
+        .map(|_| ())
 }
 
 pub fn simple_write_begin(
@@ -229,7 +231,7 @@ pub fn simple_write_begin(
 ) -> Result {
     Error::parse_int(unsafe {
         bindings::simple_write_begin(
-            file.map(|f| f.ptr).unwrap_or(ptr::null_mut()),
+            file.map(|f| f.as_mut_ptr()).unwrap_or(ptr::null_mut()),
             mapping as *mut _,
             pos,
             len,
@@ -252,7 +254,7 @@ pub fn simple_write_end(
 ) -> Result<u32> {
     Error::parse_int(unsafe {
         bindings::simple_write_end(
-            file.map(|f| f.ptr).unwrap_or(ptr::null_mut()),
+            file.map(|f| f.as_mut_ptr()).unwrap_or(ptr::null_mut()),
             mapping as *mut _,
             pos,
             len,
