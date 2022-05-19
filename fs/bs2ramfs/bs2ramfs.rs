@@ -204,15 +204,15 @@ struct Bs2RamfsSuperOps {
 impl SuperOperations for Bs2RamfsSuperOps {
     kernel::declare_super_operations!(statfs, drop_inode, show_options);
 
-    fn drop_inode(&self, inode: &mut Inode) -> Result {
+    fn drop_inode(inode: &mut Inode) -> Result {
         libfs_functions::generic_delete_inode(inode)
     }
 
-    fn statfs(&self, root: &mut Dentry, buf: &mut Kstatfs) -> Result {
+    fn statfs(root: &mut Dentry, buf: &mut Kstatfs) -> Result {
         libfs_functions::simple_statfs(root, buf)
     }
 
-    fn show_options(&self, _s: &mut SeqFile, _root: &mut Dentry) -> Result {
+    fn show_options(_s: &mut SeqFile, _root: &mut Dentry) -> Result {
         pr_emerg!("ramfs show options, doing nothing");
         Ok(())
     }
@@ -224,12 +224,11 @@ struct Bs2RamfsAOps;
 impl AddressSpaceOperations for Bs2RamfsAOps {
     kernel::declare_address_space_operations!(readpage, write_begin, write_end, set_page_dirty);
 
-    fn readpage(&self, file: &File, page: &mut Page) -> Result {
+    fn readpage(file: &File, page: &mut Page) -> Result {
         libfs_functions::simple_readpage(file, page)
     }
 
     fn write_begin(
-        &self,
         file: Option<&File>,
         mapping: &mut AddressSpace,
         pos: bindings::loff_t,
@@ -242,7 +241,6 @@ impl AddressSpaceOperations for Bs2RamfsAOps {
     }
 
     fn write_end(
-        &self,
         file: Option<&File>,
         mapping: &mut AddressSpace,
         pos: bindings::loff_t,
@@ -254,7 +252,7 @@ impl AddressSpaceOperations for Bs2RamfsAOps {
         libfs_functions::simple_write_end(file, mapping, pos, len, copied, page, fsdata)
     }
 
-    fn set_page_dirty(&self, page: &mut Page) -> Result<bool> {
+    fn set_page_dirty(page: &mut Page) -> Result<bool> {
         libfs_functions::__set_page_dirty_nobuffers(page)
     }
 }

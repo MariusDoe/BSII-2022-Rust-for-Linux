@@ -25,12 +25,11 @@ pub trait AddressSpaceOperations: Send + Sync + Sized + Default {
     /// The methods to use to populate [`struct adress_space_operations`].
     const TO_USE: ToUse;
 
-    fn readpage(&self, _file: &File, _page: &mut Page) -> Result {
+    fn readpage(_file: &File, _page: &mut Page) -> Result {
         Err(Error::EINVAL)
     }
 
     fn write_begin(
-        &self,
         _file: Option<&File>,
         _mapping: &mut AddressSpace,
         _pos: bindings::loff_t,
@@ -43,7 +42,6 @@ pub trait AddressSpaceOperations: Send + Sync + Sized + Default {
     }
 
     fn write_end(
-        &self,
         _file: Option<&File>,
         _mapping: &mut AddressSpace,
         _pos: bindings::loff_t,
@@ -55,7 +53,7 @@ pub trait AddressSpaceOperations: Send + Sync + Sized + Default {
         Err(Error::EINVAL)
     }
 
-    fn set_page_dirty(&self, _page: &mut Page) -> Result<bool> {
+    fn set_page_dirty(_page: &mut Page) -> Result<bool> {
         Err(Error::EINVAL)
     }
 }
@@ -66,9 +64,8 @@ unsafe extern "C" fn readpage_callback<T: AddressSpaceOperations>(
 ) -> c_types::c_int {
     unsafe {
         let address_space = (*file).f_mapping;
-        let a_ops = &*((*address_space).private_data as *const T);
         from_kernel_result! {
-            a_ops.readpage(&File::from_ptr(file), &mut (*page)).map(|()| 0)
+            T::readpage(&File::from_ptr(file), &mut (*page)).map(|()| 0)
         }
     }
 }
@@ -83,10 +80,9 @@ unsafe extern "C" fn write_begin_callback<T: AddressSpaceOperations>(
     fsdata: *mut *mut c_types::c_void,
 ) -> c_types::c_int {
     unsafe {
-        let a_ops = &*((*mapping).private_data as *const T);
         let file = (!file.is_null()).then(|| File::from_ptr(file));
         from_kernel_result! {
-            a_ops.write_begin(file.as_deref(), &mut (*mapping), pos, len, flags, pagep, fsdata).map(|()| 0)
+            T::write_begin(file.as_deref(), &mut (*mapping), pos, len, flags, pagep, fsdata).map(|()| 0)
         }
     }
 }
@@ -101,10 +97,9 @@ unsafe extern "C" fn write_end_callback<T: AddressSpaceOperations>(
     fsdata: *mut c_types::c_void,
 ) -> c_types::c_int {
     unsafe {
-        let a_ops = &*((*mapping).private_data as *const T);
         let file = (!file.is_null()).then(|| File::from_ptr(file));
         from_kernel_result! {
-                a_ops.write_end(file.as_deref(), &mut (*mapping), pos, len, copied, &mut (*page), fsdata).map(|x| x as i32)
+            T::write_end(file.as_deref(), &mut (*mapping), pos, len, copied, &mut (*page), fsdata).map(|x| x as i32)
         }
     }
 }
@@ -114,9 +109,8 @@ unsafe extern "C" fn set_page_dirty_callback<T: AddressSpaceOperations>(
 ) -> c_types::c_int {
     unsafe {
         let address_space = (*page).__bindgen_anon_1.__bindgen_anon_1.mapping;
-        let a_ops = &*((*address_space).private_data as *const T);
         from_kernel_result! {
-            a_ops.set_page_dirty(&mut (*page)).map(|x| x as i32)
+            T::set_page_dirty(&mut (*page)).map(|x| x as i32)
         }
     }
 }
