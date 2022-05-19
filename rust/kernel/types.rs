@@ -25,6 +25,7 @@ pub type Path = bindings::path;
 pub type Kstat = bindings::kstat;
 pub type Dev = bindings::dev_t;
 pub type Page = bindings::page;
+pub type Folio = bindings::folio;
 pub type AddressSpace = bindings::address_space;
 
 /// Permissions.
