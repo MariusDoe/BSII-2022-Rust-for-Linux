@@ -10,6 +10,7 @@ use crate::{
         super_operations::Kstatfs, DeclaredFileSystemType, FileSystemBase,
     },
     iov_iter::IovIter,
+    mm,
     print::ExpectK,
     str::CStr,
     types::{AddressSpace, Iattr, Kstat, Page, Path, UserNamespace},
@@ -24,8 +25,8 @@ pub fn generic_file_write_iter(iocb: &mut Kiocb, iter: &mut IovIter) -> Result<u
     Error::parse_int(unsafe { bindings::generic_file_write_iter(iocb.as_ptr_mut(), iter.ptr) as _ })
 }
 
-pub fn generic_file_mmap(file: &File, vma: &mut bindings::vm_area_struct) -> Result {
-    Error::parse_int(unsafe { bindings::generic_file_mmap(file.as_mut_ptr(), vma as *mut _) })
+pub fn generic_file_mmap(file: &File, vma: &mut mm::virt::Area) -> Result {
+    Error::parse_int(unsafe { bindings::generic_file_mmap(file.as_mut_ptr(), vma.as_mut_ptr()) })
         .map(|_| ())
 }
 
