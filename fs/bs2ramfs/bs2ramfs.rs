@@ -22,7 +22,7 @@ use kernel::{
     prelude::*,
     str::CStr,
     types::{AddressSpace, Dev, Iattr, Kstat, Page, Path, UserNamespace},
-    Error, Mode,
+    Error, Mode, Module,
 };
 
 const PAGE_SHIFT: u32 = 12; // x86 (maybe)
@@ -96,7 +96,7 @@ impl FileSystemBase for BS2Ramfs {
 }
 kernel::declare_fs_type!(BS2Ramfs, BS2RAMFS_FS_TYPE);
 
-impl KernelModule for BS2Ramfs {
+impl Module for BS2Ramfs {
     fn init() -> Result<Self> {
         pr_emerg!("bs2 ramfs in action");
         libfs_functions::register_filesystem::<Self>().map(move |_| Self)
