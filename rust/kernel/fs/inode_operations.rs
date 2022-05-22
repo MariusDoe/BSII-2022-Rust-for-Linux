@@ -122,7 +122,6 @@ unsafe extern "C" fn setattr_callback<T: InodeOperations>(
 ) -> c_types::c_int {
     unsafe {
         let dentry = dentry.as_mut().expectk("setattr got null dentry").as_mut();
-        let inode = dentry.d_inode; // use d_inode method instead?
         from_kernel_result! {
             T::setattr(&mut (*mnt_userns), dentry, &mut (*iattr)).map(|()| 0)
         }
@@ -137,8 +136,6 @@ unsafe extern "C" fn getattr_callback<T: InodeOperations>(
     query_flags: u32,
 ) -> c_types::c_int {
     unsafe {
-        let dentry = (*path).dentry;
-        let inode = (*dentry).d_inode; // use d_inode method instead?
         from_kernel_result! {
             T::getattr(&mut (*mnt_userns), &(*path), &mut (*stat), request_mask, query_flags).map(|()| 0)
         }

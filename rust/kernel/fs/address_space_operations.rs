@@ -63,7 +63,6 @@ unsafe extern "C" fn readpage_callback<T: AddressSpaceOperations>(
     page: *mut bindings::page,
 ) -> c_types::c_int {
     unsafe {
-        let address_space = (*file).f_mapping;
         from_kernel_result! {
             T::readpage(&File::from_ptr(file), &mut (*page)).map(|()| 0)
         }

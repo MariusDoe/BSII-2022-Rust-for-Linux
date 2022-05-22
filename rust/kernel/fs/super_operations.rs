@@ -66,7 +66,6 @@ unsafe extern "C" fn drop_inode_callback<T: SuperOperations>(
     inode: *mut bindings::inode,
 ) -> c_types::c_int {
     unsafe {
-        let sb = (*inode).i_sb as *const bindings::super_block;
         let inode = inode.as_mut().expectk("drop_inode got null inode").as_mut();
         from_kernel_result! {
             T::drop_inode(inode)?;
@@ -141,7 +140,6 @@ unsafe extern "C" fn statfs_callback<T: SuperOperations>(
 ) -> c_types::c_int {
     from_kernel_result! {
         unsafe {
-            let sb = (*root).d_sb as *const bindings::super_block;
             T::statfs(root.as_mut().expectk("Statfs got null dentry").as_mut(), &mut *buf)?;
             Ok(0)
         }
@@ -175,7 +173,6 @@ unsafe extern "C" fn show_options_callback<T: SuperOperations>(
 ) -> c_types::c_int {
     from_kernel_result! {
         unsafe {
-            let sb = (*root).d_sb as *const bindings::super_block;
             T::show_options(&mut *s, root.as_mut().expectk("show_options got null dentry").as_mut())?;
             Ok(0)
         }
