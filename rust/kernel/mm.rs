@@ -33,6 +33,11 @@ pub mod virt {
             Self { vma }
         }
 
+        /// Returns the underlying pointer to the C struct.
+        pub(crate) fn as_mut_ptr(&mut self) -> *mut bindings::vm_area_struct {
+            self.vma
+        }
+
         /// Returns the flags associated with the virtual memory area.
         ///
         /// The possible flags are a combination of the constants in [`flags`].
