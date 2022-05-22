@@ -11,7 +11,7 @@ use crate::{
     error::{from_kernel_result, Error, Result},
     file::File,
     fs::BuildVtable,
-    types::{AddressSpace, Page},
+    types::{AddressSpace, Folio, Page},
 };
 
 /// Corresponds to the kernel's `struct adress_space_operations`.
@@ -53,7 +53,7 @@ pub trait AddressSpaceOperations: Send + Sync + Sized + Default {
         Err(Error::EINVAL)
     }
 
-    fn set_page_dirty(_page: &mut Page) -> Result<bool> {
+    fn dirty_folio(_address_space: &mut AddressSpace, _folio: &mut Folio) -> Result<bool> {
         Err(Error::EINVAL)
     }
 }
@@ -104,15 +104,11 @@ unsafe extern "C" fn write_end_callback<T: AddressSpaceOperations>(
     }
 }
 
-unsafe extern "C" fn set_page_dirty_callback<T: AddressSpaceOperations>(
-    page: *mut bindings::page,
-) -> c_types::c_int {
-    unsafe {
-        let address_space = (*page).__bindgen_anon_1.__bindgen_anon_1.mapping;
-        from_kernel_result! {
-            T::set_page_dirty(&mut (*page)).map(|x| x as i32)
-        }
-    }
+unsafe extern "C" fn dirty_folio_callback<T: AddressSpaceOperations>(
+    address_space: *mut bindings::address_space,
+    folio: *mut bindings::folio,
+) -> bool {
+    unsafe { T::dirty_folio(&mut (*address_space), &mut (*folio)).unwrap_or(false) }
 }
 
 pub(crate) struct AddressSpaceOperationsVtable<T>(marker::PhantomData<T>);
@@ -134,16 +130,23 @@ impl<T: AddressSpaceOperations> AddressSpaceOperationsVtable<T> {
         } else {
             None
         },
+        dirty_folio: if T::TO_USE.dirty_folio {
+            Some(dirty_folio_callback::<T>)
+        } else {
+            None
+        },
         writepage: None,
         writepages: None,
         readahead: None,
         bmap: None,
+        invalidate_folio: None,
         releasepage: None,
         freepage: None,
         direct_IO: None,
         migratepage: None,
         isolate_page: None,
         putback_page: None,
+        launder_folio: None,
         is_partially_uptodate: None,
         is_dirty_writeback: None,
         error_remove_page: None,
@@ -174,8 +177,8 @@ pub struct ToUse {
     pub write_begin: bool,
     /// The `write_begin` field of [`struct address_space_operation`].
     pub write_end: bool,
-    /// The `set_page_dirty` field of [`struct address_space_operation`].
-    pub set_page_dirty: bool,
+    /// The `dirty_folio` field of [`struct address_space_operation`].
+    pub dirty_folio: bool,
 }
 
 /// A constant version where all values are to set to `false`, that is, all supported fields will
@@ -184,7 +187,7 @@ pub const USE_NONE: ToUse = ToUse {
     readpage: false,
     write_begin: false,
     write_end: false,
-    set_page_dirty: false,
+    dirty_folio: false,
 };
 
 #[macro_export]
