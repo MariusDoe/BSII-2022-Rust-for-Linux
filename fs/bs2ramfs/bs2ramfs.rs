@@ -85,7 +85,7 @@ impl FileSystemBase for BS2Ramfs {
             .ok_or(Error::ENOMEM)? as *mut _ as *mut _;
         pr_emerg!("(rust) s_root: {:?}", sb.s_root);
 
-        sb.set_super_operations(ops);
+        sb.set_super_operations();
         sb.s_maxbytes = MAX_LFS_FILESIZE;
         sb.s_blocksize = kernel::PAGE_SIZE as _;
         sb.s_blocksize_bits = PAGE_SHIFT as _;
