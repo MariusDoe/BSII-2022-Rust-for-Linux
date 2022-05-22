@@ -1,5 +1,4 @@
-#![no_std]
-#![feature(allocator_api, global_asm)]
+#![feature(allocator_api)]
 
 use alloc::boxed::Box;
 use core::{mem, ptr};
