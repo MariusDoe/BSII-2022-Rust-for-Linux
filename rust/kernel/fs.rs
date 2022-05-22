@@ -121,5 +121,6 @@ pub const DEFAULT_FS_TYPE: bindings::file_system_type = bindings::file_system_ty
     s_writers_key: [bindings::lock_class_key {}; 3],
     i_lock_key: bindings::lock_class_key {},
     i_mutex_key: bindings::lock_class_key {},
+    invalidate_lock_key: bindings::lock_class_key {},
     i_mutex_dir_key: bindings::lock_class_key {},
 };
