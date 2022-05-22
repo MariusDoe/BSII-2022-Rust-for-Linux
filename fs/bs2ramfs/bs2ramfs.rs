@@ -146,11 +146,11 @@ impl Operations for Bs2RamfsFileOps {
         libfs_functions::generic_file_write_iter(iocb, iter)
     }
 
-    fn mmap(&self, file: &File, vma: &mut bindings::vm_area_struct) -> Result {
+    fn mmap(_data: (), file: &File, vma: &mut mm::virt::Area) -> Result {
         libfs_functions::generic_file_mmap(file, vma)
     }
 
-    fn fsync(&self, file: &File, start: u64, end: u64, datasync: bool) -> Result<u32> {
+    fn fsync(_data: (), file: &File, start: u64, end: u64, datasync: bool) -> Result<u32> {
         libfs_functions::noop_fsync(file, start, end, datasync)
     }
 
@@ -168,7 +168,7 @@ impl Operations for Bs2RamfsFileOps {
         unimplemented!()
     }
 
-    fn seek(&self, file: &File, pos: SeekFrom) -> Result<u64> {
+    fn seek(_data: (), file: &File, pos: SeekFrom) -> Result<u64> {
         libfs_functions::generic_file_llseek(file, pos)
     }
 
