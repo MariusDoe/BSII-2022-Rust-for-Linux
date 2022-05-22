@@ -19,6 +19,7 @@ use kernel::{
         FileSystemBase, FileSystemType,
     },
     iov_iter::IovIter,
+    mm,
     prelude::*,
     str::CStr,
     types::{AddressSpace, Dev, Iattr, Kstat, Page, Path, UserNamespace},
@@ -97,7 +98,7 @@ impl FileSystemBase for BS2Ramfs {
 kernel::declare_fs_type!(BS2Ramfs, BS2RAMFS_FS_TYPE);
 
 impl Module for BS2Ramfs {
-    fn init() -> Result<Self> {
+    fn init(_name: &'static CStr, _module: &'static ThisModule) -> Result<Self> {
         pr_emerg!("bs2 ramfs in action");
         libfs_functions::register_filesystem::<Self>().map(move |_| Self)
     }
