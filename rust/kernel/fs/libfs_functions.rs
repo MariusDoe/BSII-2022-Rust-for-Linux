@@ -216,8 +216,7 @@ pub fn kill_litter_super(sb: &mut SuperBlock) {
 }
 
 pub fn simple_readpage(file: &File, page: &mut Page) -> Result {
-    let simple_readpage = bindings::ram_aops
-        .readpage
+    let simple_readpage = unsafe { bindings::ram_aops.readpage }
         .expectk("ram_aops should contain a pointer to simple_readpage");
     Error::parse_int(unsafe { simple_readpage(file.as_mut_ptr(), page as *mut _) }).map(|_| ())
 }
@@ -254,8 +253,7 @@ pub fn simple_write_end(
     page: &mut Page,
     fsdata: *mut c_void,
 ) -> Result<u32> {
-    let simple_write_end = bindings::ram_aops
-        .write_end
+    let simple_write_end = unsafe { bindings::ram_aops.write_end }
         .expectk("ram_aops should contain a pointer to simple_write_end");
     Error::parse_int(unsafe {
         simple_write_end(
