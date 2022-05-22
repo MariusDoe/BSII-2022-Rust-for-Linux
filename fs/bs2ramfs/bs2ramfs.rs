@@ -6,8 +6,7 @@ use core::{mem, ptr};
 use kernel::{
     bindings,
     c_types::*,
-    file::File,
-    file_operations::{FileOperations, SeekFrom},
+    file::{File, Operations, SeekFrom},
     fs::{
         address_space_operations::AddressSpaceOperations,
         dentry::Dentry,
@@ -126,7 +125,7 @@ impl Default for RamfsMountOpts {
 #[derive(Default)]
 struct Bs2RamfsFileOps;
 
-impl FileOperations for Bs2RamfsFileOps {
+impl Operations for Bs2RamfsFileOps {
     kernel::declare_file_operations!(
         read_iter,
         write_iter,
