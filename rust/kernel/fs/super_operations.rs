@@ -20,7 +20,8 @@ pub type Kstatfs = bindings::kstatfs;
 // unsafe extern "C" fn alloc_inode_callback<T: SuperOperations>(
 //     sb: *mut bindings::super_block,
 // ) -> *mut bindings::inode {
-//     let inode = T::alloc_inode(&SuperBlock::from_ptr(sb)); // TODO SuperBlock, Inode
+//     let s_ops = &*((*sb).s_fs_info as *const T);
+//     let inode = s_ops.alloc_inode(&SuperBlock::from_ptr(sb)); // TODO SuperBlock, Inode
 //     inode.map(|i| Inode::into_ptr(inode))
 // }
 
@@ -28,16 +29,18 @@ pub type Kstatfs = bindings::kstatfs;
 //     inode: *mut bindings::inode,
 // ) {
 //     let sb = (*inode).i_sb as *const bindings::super_block;
+//     let s_ops = &*((*sb).s_fs_info as *const T);
 //     let inode = Inode::from_ptr(inode);
-//     T::destroy_inode(inode);
+//     s_ops.destroy_inode(inode);
 // }
 
 // unsafe extern "C" fn free_inode_callback<T: SuperOperations>(
 //     inode: *mut bindings::inode,
 // ) {
 //     let sb = (*inode).i_sb as *const bindings::super_block;
+//     let s_ops = &*((*sb).s_fs_info as *const T);
 //     let inode = Inode::from_ptr(inode);
-//     T::free_inode(inode);
+//     s_ops.free_inode(inode);
 // }
 
 // unsafe extern "C" fn dirty_inode_callback<T: SuperOperations>(
@@ -45,8 +48,9 @@ pub type Kstatfs = bindings::kstatfs;
 //     flags: c_types::c_int,
 // ) {
 //     let sb = (*inode).i_sb as *const bindings::super_block;
+//     let s_ops = &*((*sb).s_fs_info as *const T);
 //     let inode = Inode::from_ptr(inode);
-//     T::dirty_inode(inode, flags);
+//     s_ops.dirty_inode(inode, flags);
 // }
 
 // unsafe extern "C" fn write_inode_callback<T: SuperOperations>(
@@ -54,10 +58,11 @@ pub type Kstatfs = bindings::kstatfs;
 //     wbc: *mut bindings::writeback_control, // TODO
 // ) -> c_types::c_int {
 //     let sb = (*inode).i_sb as *const bindings::super_block;
+//     let s_ops = &*((*sb).s_fs_info as *const T);
 //     let inode = Inode::from_ptr(inode);
 //     let wbc = WritebackControl::from_ptr(wbc);
 //     from_kernel_result! {
-//         T::write_inode(inode, wbc)?;
+//         s_ops.write_inode(inode, wbc)?;
 //         Ok(0)
 //     }
 // }
@@ -66,9 +71,11 @@ unsafe extern "C" fn drop_inode_callback<T: SuperOperations>(
     inode: *mut bindings::inode,
 ) -> c_types::c_int {
     unsafe {
+        let sb = (*inode).i_sb as *const bindings::super_block;
+        let s_ops = &*((*sb).s_fs_info as *const T);
         let inode = inode.as_mut().expectk("drop_inode got null inode").as_mut();
         from_kernel_result! {
-            T::drop_inode(inode)?;
+            s_ops.drop_inode(inode)?;
             Ok(0)
         }
     }
@@ -78,14 +85,16 @@ unsafe extern "C" fn drop_inode_callback<T: SuperOperations>(
 //     inode: *mut bindings::inode,
 // ) {
 //     let sb = (*inode).i_sb as *const bindings::super_block;
+//     let s_ops = &*((*sb).s_fs_info as *const T);
 //     let inode = Inode::from_ptr(inode);
-//     T::evict_inode(inode);
+//     s_ops.evict_inode(inode);
 // }
 
 // unsafe extern "C" fn put_super_callback<T: SuperOperations>(
 //     sb: *mut bindings::super_block,
 // ) {
-//     T::put_super(&SuperBlock::from_ptr(sb));
+//     let s_ops = &*((*sb).s_fs_info as *const T);
+//     s_ops.put_super(&SuperBlock::from_ptr(sb));
 // }
 
 // unsafe extern "C" fn sync_fs_callback<T: SuperOperations>(
@@ -93,7 +102,8 @@ unsafe extern "C" fn drop_inode_callback<T: SuperOperations>(
 //     wait: c_types::c_int,
 // ) -> c_types::c_int {
 //     from_kernel_result! {
-//         T::sync_fs(&SuperBlock::from_ptr(sb), wait)?;
+//         let s_ops = &*((*sb).s_fs_info as *const T);
+//         s_ops.sync_fs(&SuperBlock::from_ptr(sb), wait)?;
 //         Ok(0)
 //     }
 // }
@@ -102,7 +112,8 @@ unsafe extern "C" fn drop_inode_callback<T: SuperOperations>(
 //     sb: *mut bindings::super_block,
 // ) -> c_types::c_int {
 //     from_kernel_result! {
-//         T::sync_fs(&SuperBlock::from_ptr(sb))?;
+//         let s_ops = &*((*sb).s_fs_info as *const T);
+//         s_ops.sync_fs(&SuperBlock::from_ptr(sb))?;
 //         Ok(0)
 //     }
 // }
@@ -111,7 +122,8 @@ unsafe extern "C" fn drop_inode_callback<T: SuperOperations>(
 //     sb: *mut bindings::super_block,
 // ) -> c_types::c_int {
 //     from_kernel_result! {
-//         T::freeze_fs(&SuperBlock::from_ptr(sb))?;
+//         let s_ops = &*((*sb).s_fs_info as *const T);
+//         s_ops.freeze_fs(&SuperBlock::from_ptr(sb))?;
 //         Ok(0)
 //     }
 // }
@@ -120,7 +132,8 @@ unsafe extern "C" fn drop_inode_callback<T: SuperOperations>(
 //     sb: *mut bindings::super_block,
 // ) -> c_types::c_int {
 //     from_kernel_result! {
-//         T::thaw_super(&SuperBlock::from_ptr(sb))?;
+//         let s_ops = &*((*sb).s_fs_info as *const T);
+//         s_ops.thaw_super(&SuperBlock::from_ptr(sb))?;
 //         Ok(0)
 //     }
 // }
@@ -129,7 +142,8 @@ unsafe extern "C" fn drop_inode_callback<T: SuperOperations>(
 //     sb: *mut bindings::super_block,
 // ) -> c_types::c_int {
 //     from_kernel_result! {
-//         T::unfreeze_fs(&SuperBlock::from_ptr(sb))?;
+//         let s_ops = &*((*sb).s_fs_info as *const T);
+//         s_ops.unfreeze_fs(&SuperBlock::from_ptr(sb))?;
 //         Ok(0)
 //     }
 // }
@@ -140,7 +154,9 @@ unsafe extern "C" fn statfs_callback<T: SuperOperations>(
 ) -> c_types::c_int {
     from_kernel_result! {
         unsafe {
-            T::statfs(root.as_mut().expectk("Statfs got null dentry").as_mut(), &mut *buf)?;
+            let sb = (*root).d_sb as *const bindings::super_block;
+            let s_ops = &*((*sb).s_fs_info as *const T);
+            s_ops.statfs(root.as_mut().expectk("Statfs got null dentry").as_mut(), &mut *buf)?;
             Ok(0)
         }
     }
@@ -152,7 +168,8 @@ unsafe extern "C" fn statfs_callback<T: SuperOperations>(
 //     data: *mut c_types::c_char,
 // ) -> c_types::c_int {
 //     from_kernel_result! {
-//         T::remount_fs(
+//         let s_ops = &*((*sb).s_fs_info as *const T);
+//         s_ops.remount_fs(
 //             &SuperBlock::from_ptr(sb),
 //             flags,
 //             &CStr::from_ptr(data), // TODO
@@ -164,7 +181,8 @@ unsafe extern "C" fn statfs_callback<T: SuperOperations>(
 // unsafe extern "C" fn umount_begin_callback<T: SuperOperations>(
 //     sb: *mut bindings::super_block,
 // ) {
-//     T::umount_begin(&SuperBlock::from_ptr(sb));
+//     let s_ops = &*((*sb).s_fs_info as *const T);
+//     s_ops.umount_begin(&SuperBlock::from_ptr(sb));
 // }
 
 unsafe extern "C" fn show_options_callback<T: SuperOperations>(
@@ -173,7 +191,9 @@ unsafe extern "C" fn show_options_callback<T: SuperOperations>(
 ) -> c_types::c_int {
     from_kernel_result! {
         unsafe {
-            T::show_options(&mut *s, root.as_mut().expectk("show_options got null dentry").as_mut())?;
+            let sb = (*root).d_sb as *const bindings::super_block;
+            let s_ops = &*((*sb).s_fs_info as *const T);
+            s_ops.show_options(&mut *s, root.as_mut().expectk("show_options got null dentry").as_mut())?;
             Ok(0)
         }
     }
@@ -185,7 +205,8 @@ unsafe extern "C" fn show_options_callback<T: SuperOperations>(
 // ) -> c_types::c_int {
 //     from_kernel_result! {
 //         let sb = (*root).d_sb as *const bindings::super_block;
-//         T::show_devname(&SeqFile::from_ptr(s), &Dentry::from_ptr(root))?;
+//         let s_ops = &*((*sb).s_fs_info as *const T);
+//         s_ops.show_devname(&SeqFile::from_ptr(s), &Dentry::from_ptr(root))?;
 //         Ok(0)
 //     }
 // }
@@ -196,7 +217,8 @@ unsafe extern "C" fn show_options_callback<T: SuperOperations>(
 // ) -> c_types::c_int {
 //     from_kernel_result! {
 //         let sb = (*root).d_sb as *const bindings::super_block;
-//         T::show_path(&SeqFile::from_ptr(s), &Dentry::from_ptr(root))?;
+//         let s_ops = &*((*sb).s_fs_info as *const T);
+//         s_ops.show_path(&SeqFile::from_ptr(s), &Dentry::from_ptr(root))?;
 //         Ok(0)
 //     }
 // }
@@ -207,7 +229,8 @@ unsafe extern "C" fn show_options_callback<T: SuperOperations>(
 // ) -> c_types::c_int {
 //     from_kernel_result! {
 //         let sb = (*root).d_sb as *const bindings::super_block;
-//         T::show_stats(&SeqFile::from_ptr(s), &Dentry::from_ptr(root))?;
+//         let s_ops = &*((*sb).s_fs_info as *const T);
+//         s_ops.show_stats(&SeqFile::from_ptr(s), &Dentry::from_ptr(root))?;
 //         Ok(0)
 //     }
 // }
@@ -216,14 +239,16 @@ unsafe extern "C" fn show_options_callback<T: SuperOperations>(
 //     sb: *mut bindings::super_block,
 //     sc: *mut bindings::shrink_control, // TODO
 // ) -> c_types::c_long {
-//     T::nr_cached_objects(&SuperBlock::from_ptr(sb), &ShrinkControl::from_ptr(sc))
+//     let s_ops = &*((*sb).s_fs_info as *const T);
+//     s_ops.nr_cached_objects(&SuperBlock::from_ptr(sb), &ShrinkControl::from_ptr(sc))
 // }
 
 // unsafe extern "C" fn free_cached_objects_callback<T: SuperOperations>(
 //     sb: *mut bindings::super_block,
 //     sc: *mut bindings::shrink_control, // TODO
 // ) -> c_types::c_long {
-//     T::free_cached_objects(&SuperBlock::from_ptr(sb), &ShrinkControl::from_ptr(sc))
+//     let s_ops = &*((*sb).s_fs_info as *const T);
+//     s_ops.free_cached_objects(&SuperBlock::from_ptr(sb), &ShrinkControl::from_ptr(sc))
 // }
 
 pub(crate) struct SuperOperationsVtable<T>(marker::PhantomData<T>);
@@ -495,79 +520,79 @@ pub trait SuperOperations: Send + Sync + Sized + Default {
     /// The methods to use to populate [`struct super_operations`].
     const TO_USE: ToUse;
 
-    // fn alloc_inode(_sb: &SuperBlock) -> Option<Inode> {
+    // fn alloc_inode(&self, _sb: &SuperBlock) -> Option<Inode> {
     //     None
     // }
 
-    // fn destroy_inode(_inode: &Inode) {}
+    // fn destroy_inode(&self, _inode: &Inode) {}
 
-    // fn free_inode(_inode: &Inode) {}
+    // fn free_inode(&self, _inode: &Inode) {}
 
-    // fn dirty_inode(_inode: &Inode, _flags: i32) {}
+    // fn dirty_inode(&self, _inode: &Inode, _flags: i32) {}
 
-    // fn write_inode(_inode: &Inode, _wbc: &WritebackControl) -> Result {
+    // fn write_inode(&self, _inode: &Inode, _wbc: &WritebackControl) -> Result {
     //     Err(Error::EINVAL)
     // }
 
-    fn drop_inode(_inode: &mut Inode) -> Result {
+    fn drop_inode(&self, _inode: &mut Inode) -> Result {
         Err(Error::EINVAL)
     }
 
-    // fn evict_inode(_inode: &Inode) {}
+    // fn evict_inode(&self, _inode: &Inode) {}
 
-    // fn put_super(_sb: &SuperBlock) {}
+    // fn put_super(&self, _sb: &SuperBlock) {}
 
-    // fn sync_fs(_sb: &SuperBlock, wait: i32) -> Result {
+    // fn sync_fs(&self, _sb: &SuperBlock, wait: i32) -> Result {
     //     Err(Error::EINVAL)
     // }
 
-    // fn freeze_super(_sb: &SuperBlock) -> Result {
+    // fn freeze_super(&self, _sb: &SuperBlock) -> Result {
     //     Err(Error::EINVAL)
     // }
 
-    // fn freeze_fs(_sb: &SuperBlock) -> Result {
+    // fn freeze_fs(&self, _sb: &SuperBlock) -> Result {
     //     Err(Error::EINVAL)
     // }
 
-    // fn thaw_super(_sb: &SuperBlock) -> Result {
+    // fn thaw_super(&self, _sb: &SuperBlock) -> Result {
     //     Err(Error::EINVAL)
     // }
 
-    // fn unfreeze_fs(_sb: &SuperBlock) -> Result {
+    // fn unfreeze_fs(&self, _sb: &SuperBlock) -> Result {
     //     Err(Error::EINVAL)
     // }
 
-    fn statfs(_root: &mut Dentry, _buf: &mut Kstatfs) -> Result {
+    fn statfs(&self, _root: &mut Dentry, _buf: &mut Kstatfs) -> Result {
         Err(Error::EINVAL)
     }
 
-    // fn remount_fs(_sb: &SuperBlock, _flags: i32, _data: &CStr) -> Result {
+    // fn remount_fs(&self, _sb: &SuperBlock, _flags: i32, _data: &CStr) -> Result {
     //     Err(Error::EINVAL)
     // }
 
-    // fn umount_begin(_sb: &SuperBlock) {}
+    // fn umount_begin(&self, _sb: &SuperBlock) {}
 
-    fn show_options(_s: &mut SeqFile, _root: &mut Dentry) -> Result {
+    fn show_options(&self, _s: &mut SeqFile, _root: &mut Dentry) -> Result {
         Err(Error::EINVAL)
     }
 
-    // fn show_devname(_s: &SeqFile, _root: &Dentry) -> Result {
+    // fn show_devname(&self, _s: &SeqFile, _root: &Dentry) -> Result {
     //     Err(Error::EINVAL)
     // }
 
-    // fn show_path(_s: &SeqFile, _root: &Dentry) -> Result {
+    // fn show_path(&self, _s: &SeqFile, _root: &Dentry) -> Result {
     //     Err(Error::EINVAL)
     // }
 
-    // fn show_stats(_s: &SeqFile, _root: &Dentry) -> Result {
+    // fn show_stats(&self, _s: &SeqFile, _root: &Dentry) -> Result {
     //     Err(Error::EINVAL)
     // }
 
-    // fn nr_cached_objects(_sb: &SuperBlock, _sc: &ShrinkControl) -> i64 {
+    // fn nr_cached_objects(&self, _sb: &SuperBlock, _sc: &ShrinkControl) -> i64 {
     //     0
     // }
 
-    // fn free_cached_objects(_sb: &SuperBlock, _sc: &ShrinkControl) -> i64 {
+    // fn free_cached_objects(&self, _sb: &SuperBlock, _sc: &ShrinkControl) -> i64 {
     //     0
     // }
 }

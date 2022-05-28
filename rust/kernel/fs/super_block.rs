@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::mem;
 use core::ops::{Deref, DerefMut};
 
@@ -12,8 +13,9 @@ impl SuperBlock {
         self.deref_mut() as *mut _
     }
 
-    pub fn set_super_operations<OPS: SuperOperations>(&mut self) {
+    pub fn set_super_operations<OPS: SuperOperations>(&mut self, ops: OPS) {
         self.s_op = unsafe { SuperOperationsVtable::<OPS>::build() };
+        self.s_fs_info = Box::leak(Box::new(ops)) as *mut _ as *mut _;
     }
 }
 

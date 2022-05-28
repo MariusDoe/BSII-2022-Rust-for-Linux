@@ -28,6 +28,7 @@ pub trait InodeOperations: Send + Sync + Sized + Default {
     const TO_USE: ToUse;
 
     fn getattr(
+        &self,
         _mnt_userns: &mut UserNamespace,
         _path: &Path,
         _stat: &mut Kstat,
@@ -38,6 +39,7 @@ pub trait InodeOperations: Send + Sync + Sized + Default {
     }
 
     fn setattr(
+        &self,
         _mnt_userns: &mut UserNamespace,
         _dentry: &mut Dentry,
         _iattr: &mut Iattr,
@@ -46,6 +48,7 @@ pub trait InodeOperations: Send + Sync + Sized + Default {
     }
 
     fn create(
+        &self,
         _mnt_userns: &mut UserNamespace,
         _dir: &mut Inode,
         _dentry: &mut Dentry,
@@ -54,24 +57,22 @@ pub trait InodeOperations: Send + Sync + Sized + Default {
     ) -> Result {
         Err(Error::EINVAL)
     }
-
     fn lookup(
+        &self,
         _dir: &mut Inode,
         _dentry: &mut Dentry,
         _flags: c_types::c_uint,
     ) -> Result<*mut Dentry> {
         Err(Error::EINVAL)
     }
-
-    fn link(_old_dentry: &mut Dentry, _dir: &mut Inode, _dentry: &mut Dentry) -> Result {
+    fn link(&self, _old_dentry: &mut Dentry, _dir: &mut Inode, _dentry: &mut Dentry) -> Result {
         Err(Error::EINVAL)
     }
-
-    fn unlink(_dir: &mut Inode, _dentry: &mut Dentry) -> Result {
+    fn unlink(&self, _dir: &mut Inode, _dentry: &mut Dentry) -> Result {
         Err(Error::EINVAL)
     }
-
     fn symlink(
+        &self,
         _mnt_userns: &mut UserNamespace,
         _dir: &mut Inode,
         _dentry: &mut Dentry,
@@ -79,8 +80,8 @@ pub trait InodeOperations: Send + Sync + Sized + Default {
     ) -> Result {
         Err(Error::EINVAL)
     }
-
     fn mkdir(
+        &self,
         _mnt_userns: &mut UserNamespace,
         _dir: &mut Inode,
         _dentry: &mut Dentry,
@@ -88,12 +89,11 @@ pub trait InodeOperations: Send + Sync + Sized + Default {
     ) -> Result {
         Err(Error::EINVAL)
     }
-
-    fn rmdir(_dir: &mut Inode, _dentry: &mut Dentry) -> Result {
+    fn rmdir(&self, _dir: &mut Inode, _dentry: &mut Dentry) -> Result {
         Err(Error::EINVAL)
     }
-
     fn mknod(
+        &self,
         _mnt_userns: &mut UserNamespace,
         _dir: &mut Inode,
         _dentry: &mut Dentry,
@@ -102,8 +102,8 @@ pub trait InodeOperations: Send + Sync + Sized + Default {
     ) -> Result {
         Err(Error::EINVAL)
     }
-
     fn rename(
+        &self,
         _mnt_userns: &mut UserNamespace,
         _old_dir: &mut Inode,
         _old_dentry: &mut Dentry,
@@ -122,8 +122,10 @@ unsafe extern "C" fn setattr_callback<T: InodeOperations>(
 ) -> c_types::c_int {
     unsafe {
         let dentry = dentry.as_mut().expectk("setattr got null dentry").as_mut();
+        let inode = dentry.d_inode; // use d_inode method instead?
+        let i_ops = &*((*inode).i_private as *const T);
         from_kernel_result! {
-            T::setattr(&mut (*mnt_userns), dentry, &mut (*iattr)).map(|()| 0)
+            i_ops.setattr(&mut (*mnt_userns), dentry, &mut (*iattr)).map(|()| 0)
         }
     }
 }
@@ -136,8 +138,11 @@ unsafe extern "C" fn getattr_callback<T: InodeOperations>(
     query_flags: u32,
 ) -> c_types::c_int {
     unsafe {
+        let dentry = (*path).dentry;
+        let inode = (*dentry).d_inode; // use d_inode method instead?
+        let i_ops = &*((*inode).i_private as *const T);
         from_kernel_result! {
-            T::getattr(&mut (*mnt_userns), &(*path), &mut (*stat), request_mask, query_flags).map(|()| 0)
+            i_ops.getattr(&mut (*mnt_userns), &(*path), &mut (*stat), request_mask, query_flags).map(|()| 0)
         }
     }
 }
@@ -151,9 +156,10 @@ unsafe extern "C" fn create_callback<T: InodeOperations>(
 ) -> c_types::c_int {
     unsafe {
         let dir = dir.as_mut().expectk("create got null dir").as_mut();
+        let i_ops = &*(dir.i_private as *const T);
         let dentry = dentry.as_mut().expectk("create got null dentry").as_mut();
         from_kernel_result! {
-            T::create(&mut (*mnt_userns), dir, dentry, Mode::from_int(mode), excl).map(|()| 0)
+            i_ops.create(&mut (*mnt_userns), dir, dentry, Mode::from_int(mode), excl).map(|()| 0)
         }
     }
 }
@@ -164,8 +170,9 @@ unsafe extern "C" fn lookup_callback<T: InodeOperations>(
 ) -> *mut bindings::dentry {
     unsafe {
         let dir = dir.as_mut().expectk("lookup got null dir").as_mut();
+        let i_ops = &*(dir.i_private as *const T);
         let dentry = dentry.as_mut().expectk("lookup got null dentry").as_mut();
-        ret_err_ptr!(T::lookup(dir, dentry, flags).map(|p| p as *mut _))
+        ret_err_ptr!(i_ops.lookup(dir, dentry, flags).map(|p| p as *mut _))
     }
 }
 unsafe extern "C" fn link_callback<T: InodeOperations>(
@@ -175,13 +182,14 @@ unsafe extern "C" fn link_callback<T: InodeOperations>(
 ) -> c_types::c_int {
     unsafe {
         let dir = dir.as_mut().expectk("link got null dir").as_mut();
+        let i_ops = &*(dir.i_private as *const T);
         let old_dentry = old_dentry
             .as_mut()
             .expectk("link got null old_dentry")
             .as_mut();
         let dentry = dentry.as_mut().expectk("link got null dentry").as_mut();
         from_kernel_result! {
-            T::link(old_dentry, dir, dentry).map(|()| 0)
+            i_ops.link(old_dentry, dir, dentry).map(|()| 0)
         }
     }
 }
@@ -191,9 +199,10 @@ unsafe extern "C" fn unlink_callback<T: InodeOperations>(
 ) -> c_types::c_int {
     unsafe {
         let dir = dir.as_mut().expectk("unlink got null dir").as_mut();
+        let i_ops = &*(dir.i_private as *const T);
         let dentry = dentry.as_mut().expectk("unlink got null dentry").as_mut();
         from_kernel_result! {
-            T::unlink(dir, dentry).map(|()| 0)
+            i_ops.unlink(dir, dentry).map(|()| 0)
         }
     }
 }
@@ -205,9 +214,10 @@ unsafe extern "C" fn symlink_callback<T: InodeOperations>(
 ) -> c_types::c_int {
     unsafe {
         let dir = dir.as_mut().expectk("symlink got null dir").as_mut();
+        let i_ops = &*(dir.i_private as *const T);
         let dentry = dentry.as_mut().expectk("symlink got null dentry").as_mut();
         from_kernel_result! {
-            T::symlink(&mut (*mnt_userns), dir, dentry, CStr::from_char_ptr(symname)).map(|()| 0)
+            i_ops.symlink(&mut (*mnt_userns), dir, dentry, CStr::from_char_ptr(symname)).map(|()| 0)
         }
     }
 }
@@ -219,9 +229,10 @@ unsafe extern "C" fn mkdir_callback<T: InodeOperations>(
 ) -> c_types::c_int {
     unsafe {
         let dir = dir.as_mut().expectk("mkdir got null dir").as_mut();
+        let i_ops = &*(dir.i_private as *const T);
         let dentry = dentry.as_mut().expectk("mkdir got null dentry").as_mut();
         from_kernel_result! {
-            T::mkdir(&mut (*mnt_userns), dir, dentry, Mode::from_int(mode)).map(|()| 0) // todo: mode_t is u32 but u16 in Mode?
+            i_ops.mkdir(&mut (*mnt_userns), dir, dentry, Mode::from_int(mode)).map(|()| 0) // todo: mode_t is u32 but u16 in Mode?
         }
     }
 }
@@ -231,9 +242,10 @@ unsafe extern "C" fn rmdir_callback<T: InodeOperations>(
 ) -> c_types::c_int {
     unsafe {
         let dir = dir.as_mut().expectk("rmdir got null dir").as_mut();
+        let i_ops = &*(dir.i_private as *const T);
         let dentry = dentry.as_mut().expectk("rmdir got null dentry").as_mut();
         from_kernel_result! {
-            T::rmdir(dir, dentry).map(|()| 0)
+            i_ops.rmdir(dir, dentry).map(|()| 0)
         }
     }
 }
@@ -246,9 +258,10 @@ unsafe extern "C" fn mknod_callback<T: InodeOperations>(
 ) -> c_types::c_int {
     unsafe {
         let dir = dir.as_mut().expectk("mknod got null dir").as_mut();
+        let i_ops = &*(dir.i_private as *const T);
         let dentry = dentry.as_mut().expectk("mknod got null dentry").as_mut();
         from_kernel_result! {
-            T::mknod(&mut (*mnt_userns), dir, dentry, Mode::from_int(mode), dev).map(|()| 0)
+            i_ops.mknod(&mut (*mnt_userns), dir, dentry, Mode::from_int(mode), dev).map(|()| 0)
         }
     }
 }
@@ -262,6 +275,7 @@ unsafe extern "C" fn rename_callback<T: InodeOperations>(
 ) -> c_types::c_int {
     unsafe {
         let old_dir = old_dir.as_mut().expectk("rename got null dir").as_mut();
+        let i_ops = &*(old_dir.i_private as *const T);
         let old_dentry = old_dentry
             .as_mut()
             .expectk("rename got null dentry")
@@ -272,7 +286,7 @@ unsafe extern "C" fn rename_callback<T: InodeOperations>(
             .expectk("rename got null dentry")
             .as_mut();
         from_kernel_result! {
-            T::rename(&mut (*mnt_userns), old_dir, old_dentry, new_dir, new_dentry, flags).map(|()| 0)
+            i_ops.rename(&mut (*mnt_userns), old_dir, old_dentry, new_dir, new_dentry, flags).map(|()| 0)
         }
     }
 }
