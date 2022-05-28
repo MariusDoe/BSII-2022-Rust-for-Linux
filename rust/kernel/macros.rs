@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-pub const DO_NEGATE: bool = true;
-pub const DO_NOT_NEGATE: bool = false;
+pub(crate) const DO_NEGATE: bool = true;
+pub(crate) const DO_NOT_NEGATE: bool = false;
 
 #[macro_export]
 macro_rules! declare_constant_from_bindings {
