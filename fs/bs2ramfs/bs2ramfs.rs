@@ -262,11 +262,17 @@ struct Bs2RamfsFileInodeOps;
 impl InodeOperations for Bs2RamfsFileInodeOps {
     kernel::declare_inode_operations!(setattr, getattr);
 
-    fn setattr(mnt_userns: &mut UserNamespace, dentry: &mut Dentry, iattr: &mut Iattr) -> Result {
+    fn setattr(
+        &self,
+        mnt_userns: &mut UserNamespace,
+        dentry: &mut Dentry,
+        iattr: &mut Iattr,
+    ) -> Result {
         libfs_functions::simple_setattr(mnt_userns, dentry, iattr)
     }
 
     fn getattr(
+        &self,
         mnt_userns: &mut UserNamespace,
         path: &Path,
         stat: &mut Kstat,
@@ -286,6 +292,7 @@ impl InodeOperations for Bs2RamfsDirInodeOps {
     );
 
     fn create(
+        &self,
         mnt_userns: &mut UserNamespace,
         dir: &mut Inode,
         dentry: &mut Dentry,
@@ -293,23 +300,24 @@ impl InodeOperations for Bs2RamfsDirInodeOps {
         _excl: bool,
     ) -> Result {
         pr_emerg!("enter create");
-        Self::mknod(mnt_userns, dir, dentry, mode | Mode::S_IFREG, 0)
+        self.mknod(mnt_userns, dir, dentry, mode | Mode::S_IFREG, 0)
     }
 
-    fn lookup(dir: &mut Inode, dentry: &mut Dentry, flags: c_uint) -> Result<*mut Dentry> {
+    fn lookup(&self, dir: &mut Inode, dentry: &mut Dentry, flags: c_uint) -> Result<*mut Dentry> {
         pr_emerg!("enter lookup");
         libfs_functions::simple_lookup(dir, dentry, flags) // niklas: This returns 0, but it does so on main too, so it's not the problem
     }
 
-    fn link(old_dentry: &mut Dentry, dir: &mut Inode, dentry: &mut Dentry) -> Result {
+    fn link(&self, old_dentry: &mut Dentry, dir: &mut Inode, dentry: &mut Dentry) -> Result {
         libfs_functions::simple_link(old_dentry, dir, dentry)
     }
 
-    fn unlink(dir: &mut Inode, dentry: &mut Dentry) -> Result {
+    fn unlink(&self, dir: &mut Inode, dentry: &mut Dentry) -> Result {
         libfs_functions::simple_unlink(dir, dentry)
     }
 
     fn symlink(
+        &self,
         _mnt_userns: &mut UserNamespace,
         dir: &mut Inode,
         dentry: &mut Dentry,
@@ -335,24 +343,26 @@ impl InodeOperations for Bs2RamfsDirInodeOps {
     }
 
     fn mkdir(
+        &self,
         mnt_userns: &mut UserNamespace,
         dir: &mut Inode,
         dentry: &mut Dentry,
         mode: Mode,
     ) -> Result {
         pr_emerg!("enter mkdir");
-        if let Err(_) = Self::mknod(mnt_userns, dir, dentry, mode | Mode::S_IFDIR, 0) {
+        if let Err(_) = self.mknod(mnt_userns, dir, dentry, mode | Mode::S_IFDIR, 0) {
             pr_emerg!("mkdir: inc_nlink");
             dir.inc_nlink();
         }
         Ok(())
     }
 
-    fn rmdir(dir: &mut Inode, dentry: &mut Dentry) -> Result {
+    fn rmdir(&self, dir: &mut Inode, dentry: &mut Dentry) -> Result {
         libfs_functions::simple_rmdir(dir, dentry)
     }
 
     fn mknod(
+        &self,
         _mnt_userns: &mut UserNamespace,
         dir: &mut Inode,
         dentry: &mut Dentry,
@@ -375,6 +385,7 @@ impl InodeOperations for Bs2RamfsDirInodeOps {
         })
     }
     fn rename(
+        &self,
         mnt_userns: &mut UserNamespace,
         old_dir: &mut Inode,
         old_dentry: &mut Dentry,
