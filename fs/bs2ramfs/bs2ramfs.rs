@@ -138,11 +138,11 @@ impl Operations for Bs2RamfsFileOps {
         get_unmapped_area
     );
 
-    fn read_iter(&self, iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
+    fn read_iter(_data: (), iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
         libfs_functions::generic_file_read_iter(iocb, iter)
     }
 
-    fn write_iter(&self, iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
+    fn write_iter(_data: (), iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
         libfs_functions::generic_file_write_iter(iocb, iter)
     }
 
@@ -155,7 +155,7 @@ impl Operations for Bs2RamfsFileOps {
     }
 
     fn get_unmapped_area(
-        &self,
+        _data: (),
         _file: &File,
         _addr: u64,
         _len: u64,
@@ -173,7 +173,7 @@ impl Operations for Bs2RamfsFileOps {
     }
 
     fn splice_read(
-        &self,
+        _data: (),
         file: &File,
         pos: *mut i64,
         pipe: &mut bindings::pipe_inode_info,
@@ -184,7 +184,7 @@ impl Operations for Bs2RamfsFileOps {
     }
 
     fn splice_write(
-        &self,
+        _data: (),
         pipe: &mut bindings::pipe_inode_info,
         file: &File,
         pos: *mut i64,

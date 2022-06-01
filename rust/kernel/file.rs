@@ -9,7 +9,7 @@ use crate::{
     bindings, c_types,
     cred::Credential,
     error::{code::*, from_kernel_result, Error, Result},
-    fs::BuildVtable,
+    fs::{kiocb::Kiocb, BuildVtable},
     io_buffer::{IoBufferReader, IoBufferWriter},
     iov_iter::IovIter,
     mm,
@@ -592,11 +592,20 @@ pub struct ToUse {
     /// The `fsync` field of [`struct file_operations`].
     pub fsync: bool,
 
+    /// The `get_unmapped_area` field of [`struct file_operations`].
+    pub get_unmapped_area: bool,
+
     /// The `mmap` field of [`struct file_operations`].
     pub mmap: bool,
 
     /// The `poll` field of [`struct file_operations`].
     pub poll: bool,
+
+    /// The `splice_read` field of [`struct file_operations`].
+    pub splice_read: bool,
+
+    /// The `splice_write` field of [`struct file_operations`].
+    pub splice_write: bool,
 }
 
 /// A constant version where all values are to set to `false`, that is, all supported fields will
@@ -610,8 +619,11 @@ pub const USE_NONE: ToUse = ToUse {
     ioctl: false,
     compat_ioctl: false,
     fsync: false,
+    get_unmapped_area: false,
     mmap: false,
     poll: false,
+    splice_read: false,
+    splice_write: false,
 };
 
 /// Defines the [`Operations::TO_USE`] field based on a list of fields to be populated.
@@ -808,6 +820,18 @@ pub trait Operations {
         Err(EINVAL)
     }
 
+    /// Reads data from this file to the caller's buffer.
+    ///
+    /// Corresponds to the `read_iter` function pointer in `struct file_operations`.
+    fn read_iter(data: <Self::Data as PointerWrapper>::Borrowed<'_>, iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
+        let file = iocb.get_file();
+        let offset = iocb.get_offset();
+        let read = Self::read(data, &file, iter, offset)?;
+        let offset = iocb.get_offset();
+        iocb.set_offset(offset + read as u64);
+        Ok(read)
+    }
+
     /// Writes data from the caller's buffer to this file.
     ///
     /// Corresponds to the `write` and `write_iter` function pointers in `struct file_operations`.
@@ -818,6 +842,18 @@ pub trait Operations {
         _offset: u64,
     ) -> Result<usize> {
         Err(EINVAL)
+    }
+
+    /// Writes data from the caller's buffer to this file.
+    ///
+    /// Corresponds to the `write_iter` function pointer in `struct file_operations`.
+    fn write_iter(data: <Self::Data as PointerWrapper>::Borrowed<'_>, iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
+        let file = iocb.get_file();
+        let offset = iocb.get_offset();
+        let written = Self::write(data, &file, iter, offset)?;
+        let offset = iocb.get_offset();
+        iocb.set_offset(offset + written as u64);
+        Ok(written)
     }
 
     /// Changes the position of the file.
@@ -866,6 +902,20 @@ pub trait Operations {
         Err(EINVAL)
     }
 
+    /// Unmapped area.
+    ///
+    /// Corresponds to the `get_unmapped_area` function pointer in `struct file_operations`.
+    fn get_unmapped_area(
+        _data: <Self::Data as PointerWrapper>::Borrowed<'_>,
+        _file: &File,
+        _addr: u64,
+        _len: u64,
+        _pgoff: u64,
+        _flags: u64,
+    ) -> Result<u64> {
+        Err(Error::EINVAL)
+    }
+
     /// Maps areas of the caller's virtual memory with device/file memory.
     ///
     /// Corresponds to the `mmap` function pointer in `struct file_operations`.
@@ -887,5 +937,33 @@ pub trait Operations {
         _table: &PollTable,
     ) -> Result<u32> {
         Ok(bindings::POLLIN | bindings::POLLOUT | bindings::POLLRDNORM | bindings::POLLWRNORM)
+    }
+
+        /// Splice data from file to a pipe
+    ///
+    /// Corresponds to the `splice_read` function pointer in `struct file_operations`.
+    fn splice_read(
+        _data: <Self::Data as PointerWrapper>::Borrowed<'_>,
+        _file: &File,
+        _pos: *mut i64,
+        _pipe: &mut bindings::pipe_inode_info,
+        _len: usize,
+        _flags: u32,
+    ) -> Result<usize> {
+        Err(Error::EINVAL)
+    }
+
+    /// Splice data from pipe to a file
+    ///
+    /// Corresponds to the `splice_write` function pointer in `struct file_operations`.
+    fn splice_write(
+        _data: <Self::Data as PointerWrapper>::Borrowed<'_>,
+        _pipe: &mut bindings::pipe_inode_info,
+        _file: &File,
+        _pos: *mut i64,
+        _len: usize,
+        _flags: u32,
+    ) -> Result<usize> {
+        Err(Error::EINVAL)
     }
 }
