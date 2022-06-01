@@ -1,4 +1,3 @@
-#![feature(allocator_api)]
 
 use alloc::boxed::Box;
 use core::{mem, ptr};
