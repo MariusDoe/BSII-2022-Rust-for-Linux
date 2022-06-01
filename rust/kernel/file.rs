@@ -9,6 +9,7 @@ use crate::{
     bindings, c_types,
     cred::Credential,
     error::{code::*, from_kernel_result, Error, Result},
+    fs::BuildVtable,
     io_buffer::{IoBufferReader, IoBufferWriter},
     iov_iter::IovIter,
     mm,
@@ -746,6 +747,22 @@ pub trait OpenAdapter<T: Sync> {
     /// a file that was registered by the implementer. The returned pointer must be valid and
     /// not-null.
     unsafe fn convert(_inode: *mut bindings::inode, _file: *mut bindings::file) -> *const T;
+}
+
+pub struct NopOpenAdapter;
+impl OpenAdapter<()> for NopOpenAdapter {
+    unsafe fn convert(
+        _inode: *mut bindings::inode,
+        _file: *mut bindings::file,
+    ) -> *const () {
+        &()
+    }
+}
+
+impl<T: Operations<OpenData = ()>> BuildVtable<bindings::file_operations> for T {
+    fn build_vtable() -> &'static bindings::file_operations {
+        unsafe { OperationsVtable::<NopOpenAdapter, T>::build() }
+    }
 }
 
 /// Corresponds to the kernel's `struct file_operations`.
