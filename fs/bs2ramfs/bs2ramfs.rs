@@ -138,6 +138,10 @@ impl Operations for Bs2RamfsFileOps {
         get_unmapped_area
     );
 
+    fn open(_context: &(), _file: &File) -> Result<Self::Data> {
+        Ok(())
+    }
+
     fn read_iter(_data: (), iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
         libfs_functions::generic_file_read_iter(iocb, iter)
     }
