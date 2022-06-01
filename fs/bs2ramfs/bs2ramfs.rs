@@ -21,7 +21,7 @@ use kernel::{
     mm,
     prelude::*,
     str::CStr,
-    types::{AddressSpace, Dev, Iattr, Kstat, Page, Path, UserNamespace},
+    types::{AddressSpace, Folio, Dev, Iattr, Kstat, Page, Path, UserNamespace},
     Error, Mode, Module,
 };
 
@@ -225,7 +225,7 @@ impl SuperOperations for Bs2RamfsSuperOps {
 struct Bs2RamfsAOps;
 
 impl AddressSpaceOperations for Bs2RamfsAOps {
-    kernel::declare_address_space_operations!(readpage, write_begin, write_end, set_page_dirty);
+    kernel::declare_address_space_operations!(readpage, write_begin, write_end, dirty_folio);
 
     fn readpage(&self, file: &File, page: &mut Page) -> Result {
         libfs_functions::simple_readpage(file, page)
@@ -257,8 +257,8 @@ impl AddressSpaceOperations for Bs2RamfsAOps {
         libfs_functions::simple_write_end(file, mapping, pos, len, copied, page, fsdata)
     }
 
-    fn set_page_dirty(&self, page: &mut Page) -> Result<bool> {
-        libfs_functions::__set_page_dirty_nobuffers(page)
+    fn dirty_folio(&self, address_space: &mut AddressSpace, folio: &mut Folio) -> Result<bool> {
+        Ok(libfs_functions::filemap_dirty_folio(address_space, folio))
     }
 }
 

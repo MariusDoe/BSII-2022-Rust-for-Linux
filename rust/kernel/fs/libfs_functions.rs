@@ -13,7 +13,7 @@ use crate::{
     mm,
     print::ExpectK,
     str::CStr,
-    types::{AddressSpace, Iattr, Kstat, Page, Path, UserNamespace},
+    types::{AddressSpace, Folio, Iattr, Kstat, Page, Path, UserNamespace},
     Result,
 };
 
@@ -270,9 +270,9 @@ pub fn simple_write_end(
     .map(|x| x as u32)
 }
 
-pub fn __set_page_dirty_nobuffers(page: &mut Page) -> Result<bool> {
-    Error::parse_int(unsafe { bindings::__set_page_dirty_nobuffers(page as *mut _) })
-        .map(|x| x != 0)
+
+pub fn filemap_dirty_folio(address_space: &mut AddressSpace, folio: &mut Folio) -> bool {
+    unsafe { bindings::filemap_dirty_folio(address_space as *mut _, folio as *mut _) }
 }
 
 crate::declare_c_vtable!(
