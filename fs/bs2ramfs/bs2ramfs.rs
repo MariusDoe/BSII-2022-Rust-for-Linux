@@ -115,7 +115,7 @@ impl Drop for BS2Ramfs {
 }
 
 struct RamfsMountOpts {
-    pub mode: Mode,
+    pub(crate) mode: Mode,
 }
 
 impl Default for RamfsMountOpts {
