@@ -1,3 +1,6 @@
+// TODO: Remove allows
+#![allow(missing_docs)]
+#![allow(improper_ctypes)]
 
 use alloc::boxed::Box;
 use core::{mem, ptr};

@@ -28,6 +28,10 @@
 #![feature(dispatch_from_dyn)]
 #![feature(unsize)]
 
+// TODO: Remove allows
+#![allow(missing_docs)]
+#![allow(improper_ctypes)]
+
 // Ensure conditional compilation based on the kernel configuration works;
 // otherwise we may silently break things like initcall handling.
 #[cfg(not(CONFIG_RUST))]
