@@ -75,7 +75,7 @@ impl FileSystemBase for BS2Ramfs {
         pr_emerg!("Reached ramfs_fill_super_impl");
 
         sb.s_magic = BS2RAMFS_MAGIC;
-        let ops = Bs2RamfsSuperOps::default();
+        let ops = Box::try_new(Bs2RamfsSuperOps::default())?;
 
         // TODO: investigate if this really has to be set to NULL in case we run out of memory
         sb.s_root = ptr::null_mut();
@@ -84,7 +84,8 @@ impl FileSystemBase for BS2Ramfs {
             .ok_or(Error::ENOMEM)? as *mut _ as *mut _;
         pr_emerg!("(rust) s_root: {:?}", sb.s_root);
 
-        sb.set_super_operations();
+        let ops = Box::leak(ops);
+        sb.set_super_operations(ops);
         sb.s_maxbytes = MAX_LFS_FILESIZE;
         sb.s_blocksize = kernel::PAGE_SIZE as _;
         sb.s_blocksize_bits = PAGE_SHIFT as _;
@@ -408,7 +409,8 @@ pub fn ramfs_get_inode<'a>(
         inode.i_ino = Inode::next_ino() as _;
         inode.init_owner(unsafe { &mut bindings::init_user_ns }, dir, mode);
 
-        inode.set_address_space_operations(Bs2RamfsAOps);
+        static A_OPS: Bs2RamfsAOps = Bs2RamfsAOps;
+        inode.set_address_space_operations(&A_OPS);
 
         // I think these should be functions on the AddressSpace, i.e. sth like inode.get_address_space().set_gfp_mask(...)
         unsafe {
@@ -419,16 +421,19 @@ pub fn ramfs_get_inode<'a>(
         inode.update_acm_time(UpdateATime::Yes, UpdateCTime::Yes, UpdateMTime::Yes);
         match mode & Mode::S_IFMT {
             Mode::S_IFREG => {
-                inode.set_inode_operations(Bs2RamfsFileInodeOps);
+                static I_OPS: Bs2RamfsFileInodeOps = Bs2RamfsFileInodeOps;
+                inode.set_inode_operations(&I_OPS);
                 inode.set_file_operations::<Bs2RamfsFileOps>();
             }
             Mode::S_IFDIR => {
-                inode.set_inode_operations(Bs2RamfsDirInodeOps);
+                static I_OPS: Bs2RamfsDirInodeOps = Bs2RamfsDirInodeOps;
+                inode.set_inode_operations(&I_OPS);
                 inode.set_file_operations::<SimpleDirOperations>();
                 inode.inc_nlink();
             }
             Mode::S_IFLNK => {
-                inode.set_inode_operations(PageSymlinkInodeOperations);
+                static I_OPS: PageSymlinkInodeOperations = PageSymlinkInodeOperations;
+                inode.set_inode_operations(&I_OPS);
                 inode.nohighmem();
             }
             _ => {

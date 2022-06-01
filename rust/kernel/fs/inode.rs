@@ -1,4 +1,3 @@
-use alloc::boxed::Box;
 use core::ops::{Deref, DerefMut};
 use core::{mem, ptr};
 
@@ -99,21 +98,19 @@ impl Inode {
         self.__bindgen_anon_3.i_fop = V::build_vtable();
     }
 
-    pub fn set_inode_operations<Ops: BuildVtable<bindings::inode_operations>>(&mut self, ops: Ops) {
+    pub fn set_inode_operations<Ops: BuildVtable<bindings::inode_operations>>(&mut self, ops: &'static Ops) {
         self.i_op = Ops::build_vtable();
-        // TODO: Box::try_new
-        // => probably shouzldn't allocate in this method anyways, revisit signature
-        self.i_private = Box::into_raw(Box::new(ops)).cast();
+        self.i_private = ops as *const _ as *mut _;
     }
 
     // I think Inode should rather have a method get_address_space, and the AddressSpace should then provide set_address_space_operations
     pub fn set_address_space_operations<Ops: BuildVtable<bindings::address_space_operations>>(
         &mut self,
-        ops: Ops,
+        ops: &'static Ops,
     ) {
         unsafe {
             (*self.i_mapping).a_ops = Ops::build_vtable();
-            (*self.i_mapping).private_data = Box::into_raw(Box::new(ops)).cast();
+            (*self.i_mapping).private_data = ops as *const _ as *mut _;
         }
     }
 }
