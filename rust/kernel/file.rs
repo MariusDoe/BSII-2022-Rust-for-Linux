@@ -287,7 +287,6 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         from_kernel_result! {
             let mut iter = unsafe { IovIter::from_ptr(raw_iter) };
             let file = unsafe { (*iocb).ki_filp };
-            let offset = unsafe { (*iocb).ki_pos };
             // SAFETY: `private_data` was initialised by `open_callback` with a value returned by
             // `T::Data::into_pointer`. `T::Data::from_pointer` is only called by the
             // `release` callback, which the C API guarantees that will be called only when all
@@ -295,8 +294,7 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
             // function is running.
             let f = unsafe { T::Data::borrow((*file).private_data) };
             let read =
-                T::read(f, unsafe { File::from_ptr(file) }, &mut iter, offset.try_into()?)?;
-            unsafe { (*iocb).ki_pos += bindings::loff_t::try_from(read).unwrap() };
+                T::read_iter(f, unsafe { iocb.as_mut() }.unwrap().as_mut(), &mut iter)?;
             Ok(read as _)
         }
     }
@@ -335,7 +333,6 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         from_kernel_result! {
             let mut iter = unsafe { IovIter::from_ptr(raw_iter) };
             let file = unsafe { (*iocb).ki_filp };
-            let offset = unsafe { (*iocb).ki_pos };
             // SAFETY: `private_data` was initialised by `open_callback` with a value returned by
             // `T::Data::into_pointer`. `T::Data::from_pointer` is only called by the
             // `release` callback, which the C API guarantees that will be called only when all
@@ -343,8 +340,7 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
             // function is running.
             let f = unsafe { T::Data::borrow((*file).private_data) };
             let written =
-                T::write(f, unsafe { File::from_ptr(file) }, &mut iter, offset.try_into()?)?;
-            unsafe { (*iocb).ki_pos += bindings::loff_t::try_from(written).unwrap() };
+                T::write_iter(f, unsafe { iocb.as_mut() }.unwrap().as_mut(), &mut iter)?;
             Ok(written as _)
         }
     }
