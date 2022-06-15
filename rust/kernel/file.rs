@@ -9,10 +9,11 @@ use crate::{
     bindings, c_types,
     cred::Credential,
     error::{code::*, from_kernel_result, Error, Result},
-    fs::{kiocb::Kiocb, BuildVtable},
+    fs::{fs::inode::Inode, kiocb::Kiocb, BuildVtable},
     io_buffer::{IoBufferReader, IoBufferWriter},
     iov_iter::IovIter,
     mm,
+    print::ExpectK,
     sync::CondVar,
     types::PointerWrapper,
     user_ptr::{UserSlicePtr, UserSlicePtrReader, UserSlicePtrWriter},
@@ -70,6 +71,33 @@ impl File {
     /// Returns whether the file is in blocking mode.
     pub fn is_blocking(&self) -> bool {
         self.flags() & bindings::O_NONBLOCK == 0
+    }
+
+    pub fn inode(&self) -> &mut Inode {
+        unsafe {
+            self.as_mut_ptr()
+                .f_inode
+                .as_mut()
+                .expectk("File had NULL inode")
+                .as_mut()
+        }
+    }
+
+    pub fn host_inode(&self) -> &mut Inode {
+        unsafe {
+            self.as_mut_ptr()
+                .f_mapping
+                .as_mut()
+                .expectk("File had NULL mapping")
+                .host
+                .as_mut()
+                .expectk("file mapping hat NULL host")
+                .as_mut()
+        }
+    }
+
+    pub fn fmode(&self) -> FMode {
+        FMode::from_int(unsafe { self.as_mut_ptr().f_mode })
     }
 
     /// Returns the credentials of the task that originally opened the file.
@@ -459,6 +487,21 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         }
     }
 
+    unsafe extern "C" fn get_unmapped_area_callback(
+        file: *mut bindings::file,
+        addr: c_types::c_ulong,
+        len: c_types::c_ulong,
+        pgoff: c_types::c_ulong,
+        flags: c_types::c_ulong,
+    ) -> c_types::c_ulong {
+        let ret: i64 = from_kernel_result! {
+            let f = unsafe { T::Data::borrow((*file).private_data) };
+            let res = T::get_unmapped_area(f, unsafe { File::from_ptr(file) }, addr, len, pgoff, flags)?;
+            Ok(res as _)
+        };
+        ret as _
+    }
+
     unsafe extern "C" fn poll_callback(
         file: *mut bindings::file,
         wait: *mut bindings::poll_table_struct,
@@ -473,6 +516,46 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         }) {
             Ok(v) => v,
             Err(_) => bindings::POLLERR,
+        }
+    }
+
+    unsafe extern "C" fn splice_read_callback(
+        file: *mut bindings::file,
+        ppos: *mut bindings::loff_t,
+        pipe: *mut bindings::pipe_inode_info,
+        len: c_types::c_size_t,
+        flags: c_types::c_uint,
+    ) -> c_types::c_ssize_t {
+        from_kernel_result! {
+            let f = unsafe { T::Data::borrow((*file).private_data) };
+            let ret = T::splice_read(f, unsafe { File::from_ptr(file) }, ppos, &mut unsafe {*pipe }, len, flags)?;
+            Ok(ret as _)
+        }
+    }
+
+    unsafe extern "C" fn splice_write_callback(
+        pipe: *mut bindings::pipe_inode_info,
+        file: *mut bindings::file,
+        ppos: *mut bindings::loff_t,
+        len: c_types::c_size_t,
+        flags: c_types::c_uint,
+    ) -> c_types::c_ssize_t {
+        from_kernel_result! {
+            let f = unsafe { T::Data::borrow((*file).private_data) };
+            let ret = T::splice_write(f, &mut unsafe { *pipe }, unsafe { File::from_ptr(file) }, ppos, len, flags)?;
+            Ok(ret as _)
+        }
+    }
+
+    unsafe extern "C" fn fallocate_callback(
+        file: *mut bindings::file,
+        mode: c_types::c_int,
+        offset: bindings::loff_t,
+        length: bindings::loff_t,
+    ) -> c_types::c_long {
+        from_kernel_result! {
+            let f = unsafe { T::Data::borrow((*file).private_data) };
+            T::allocate_file(f, unsafe { File::from_ptr(file) }, FileAllocMode::from_int(mode as _), offset, length).map(|()| 0)
         }
     }
 
@@ -502,7 +585,11 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
             None
         },
         copy_file_range: None,
-        fallocate: None,
+        fallocate: if T::TO_USE.allocate_file {
+            Some(fallocate_callback)
+        } else {
+            None
+        },
         fadvise: None,
         fasync: None,
         flock: None,
@@ -512,7 +599,11 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         } else {
             None
         },
-        get_unmapped_area: None,
+        get_unmapped_area: if T::TO_USE.get_unmapped_area {
+            Some(get_unmapped_area_callback)
+        } else {
+            None
+        },
         iterate: None,
         iterate_shared: None,
         iopoll: None,
@@ -538,8 +629,16 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         sendpage: None,
         setlease: None,
         show_fdinfo: None,
-        splice_read: None,
-        splice_write: None,
+        splice_read: if T::TO_USE.splice_read {
+            Some(splice_read_callback)
+        } else {
+            None
+        },
+        splice_write: if T::TO_USE.splice_write {
+            Some(splice_write_callback)
+        } else {
+            None
+        },
         unlocked_ioctl: if T::TO_USE.ioctl {
             Some(Self::unlocked_ioctl_callback)
         } else {
@@ -602,6 +701,9 @@ pub struct ToUse {
 
     /// The `splice_write` field of [`struct file_operations`].
     pub splice_write: bool,
+
+    /// The `fallocate` field of [`struct file_operations`].
+    pub allocate_file: bool,
 }
 
 /// A constant version where all values are to set to `false`, that is, all supported fields will
@@ -620,6 +722,7 @@ pub const USE_NONE: ToUse = ToUse {
     poll: false,
     splice_read: false,
     splice_write: false,
+    allocate_file: false,
 };
 
 /// Defines the [`Operations::TO_USE`] field based on a list of fields to be populated.
@@ -740,6 +843,125 @@ impl IoctlCommand {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct FileAllocMode(u8);
+
+#[rustfmt::skip]
+impl FileAllocMode {
+    pub const KEEP_SIZE: Self      = Self::from_int(0x01);
+    pub const PUNCH_HOLE: Self     = Self::from_int(0x02);
+    pub const NO_HIDE_STALE: Self  = Self::from_int(0x04);
+    pub const COLLAPSE_RANGE: Self = Self::from_int(0x08);
+    pub const ZERO_RANGE: Self     = Self::from_int(0x10);
+    pub const INSERT_RANGE: Self   = Self::from_int(0x20);
+    pub const UNSHARE_RANGE: Self  = Self::from_int(0x40);
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct FileTimeFlags(u8);
+
+#[rustfmt::skip]
+impl FileTimeFlags {
+    pub const A: Self       = Self::from_int(1);
+    pub const M: Self       = Self::from_int(2);
+    pub const C: Self       = Self::from_int(4);
+    pub const VERSION: Self = Self::from_int(8);
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct FMode(u32);
+
+impl FMode {
+    // copied from include/linux/fs.h
+    /* file is open for reading */
+    pub const FMODE_READ: Self = Self::from_int(0x1);
+    /* file is open for writing */
+    pub const FMODE_WRITE: Self = Self::from_int(0x2);
+    /* file is seekable */
+    pub const FMODE_LSEEK: Self = Self::from_int(0x4);
+    /* file can be accessed using pread */
+    pub const FMODE_PREAD: Self = Self::from_int(0x8);
+    /* file can be accessed using pwrite */
+    pub const FMODE_PWRITE: Self = Self::from_int(0x10);
+    /* File is opened for execution with sys_execve / sys_uselib */
+    pub const FMODE_EXEC: Self = Self::from_int(0x20);
+    /* File is opened with O_NDELAY (only set for block devices) */
+    pub const FMODE_NDELAY: Self = Self::from_int(0x40);
+    /* File is opened with O_EXCL (only set for block devices) */
+    pub const FMODE_EXCL: Self = Self::from_int(0x80);
+    /* File is opened using open(.., 3, ..) and is writeable only for ioctls
+    (specialy hack for floppy.c) */
+    pub const FMODE_WRITE_IOCTL: Self = Self::from_int(0x100);
+    /* 32bit hashes as llseek() offset (for directories) */
+    pub const FMODE_32BITHASH: Self = Self::from_int(0x200);
+    /* 64bit hashes as llseek() offset (for directories) */
+    pub const FMODE_64BITHASH: Self = Self::from_int(0x400);
+    /*
+     * Don't update ctime and mtime.
+     *
+     * Currently a special hack for the XFS open_by_handle ioctl, but we'll
+     * hopefully graduate it to a proper O_CMTIME flag supported by open(2) soon.
+     */
+    pub const FMODE_NOCMTIME: Self = Self::from_int(0x800);
+    /* Expect random access pattern */
+    pub const FMODE_RANDOM: Self = Self::from_int(0x1000);
+    /* File is huge (eg. /dev/kmem): treat loff_t as unsigned */
+    pub const FMODE_UNSIGNED_OFFSET: Self = Self::from_int(0x2000);
+    /* File is opened with O_PATH; almost nothing can be done with it */
+    pub const FMODE_PATH: Self = Self::from_int(0x4000);
+    /* File needs atomic accesses to f_pos */
+    pub const FMODE_ATOMIC_POS: Self = Self::from_int(0x8000);
+    /* Write access to underlying fs */
+    pub const FMODE_WRITER: Self = Self::from_int(0x10000);
+    /* Has read method(s) */
+    pub const FMODE_CAN_READ: Self = Self::from_int(0x20000);
+    /* Has write method(s) */
+    pub const FMODE_CAN_WRITE: Self = Self::from_int(0x40000);
+    pub const FMODE_OPENED: Self = Self::from_int(0x80000);
+    pub const FMODE_CREATED: Self = Self::from_int(0x100000);
+    /* File is stream-like */
+    pub const FMODE_STREAM: Self = Self::from_int(0x200000);
+    /* File was opened by fanotify and shouldn't generate fanotify events */
+    pub const FMODE_NONOTIFY: Self = Self::from_int(0x4000000);
+    /* File is capable of returning -EAGAIN if I/O will block */
+    pub const FMODE_NOWAIT: Self = Self::from_int(0x8000000);
+    /* File represents mount that needs unmounting */
+    pub const FMODE_NEED_UNMOUNT: Self = Self::from_int(0x10000000);
+    /* File does not contribute to nr_files count */
+    pub const FMODE_NOACCOUNT: Self = Self::from_int(0x20000000);
+    /* File supports async buffered reads */
+    pub const FMODE_BUF_RASYNC: Self = Self::from_int(0x40000000);
+}
+
+macro_rules! impl_flag_methods {
+    ($T:ty, $V:ty) => {
+        impl $T {
+            pub const fn empty() -> Self {
+                Self(0)
+            }
+            pub const fn from_int(val: $V) -> Self {
+                Self(val)
+            }
+            pub const fn is_empty(self) -> bool {
+                self.0 == 0
+            }
+            pub const fn has(self, other: Self) -> bool {
+                self.0 & other.0 != 0
+            }
+            pub const fn with(self, other: Self) -> Self {
+                Self(self.0 | other.0)
+            }
+            pub const fn without(self, other: Self) -> Self {
+                Self(self.0 & !other.0)
+            }
+        }
+    };
+}
+
+impl_flag_methods!(FileAllocMode, u8);
+impl_flag_methods!(FileTimeFlags, u8);
+impl_flag_methods!(FMode, u32);
+
 /// Trait for extracting file open arguments from kernel data structures.
 ///
 /// This is meant to be implemented by registration managers.
@@ -759,10 +981,7 @@ pub trait OpenAdapter<T: Sync> {
 
 pub struct NopOpenAdapter;
 impl OpenAdapter<()> for NopOpenAdapter {
-    unsafe fn convert(
-        _inode: *mut bindings::inode,
-        _file: *mut bindings::file,
-    ) -> *const () {
+    unsafe fn convert(_inode: *mut bindings::inode, _file: *mut bindings::file) -> *const () {
         &()
     }
 }
@@ -819,7 +1038,11 @@ pub trait Operations {
     /// Reads data from this file to the caller's buffer.
     ///
     /// Corresponds to the `read_iter` function pointer in `struct file_operations`.
-    fn read_iter(data: <Self::Data as PointerWrapper>::Borrowed<'_>, iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
+    fn read_iter(
+        data: <Self::Data as PointerWrapper>::Borrowed<'_>,
+        iocb: &mut Kiocb,
+        iter: &mut IovIter,
+    ) -> Result<usize> {
         let file = iocb.get_file();
         let offset = iocb.get_offset();
         let read = Self::read(data, &file, iter, offset)?;
@@ -843,7 +1066,11 @@ pub trait Operations {
     /// Writes data from the caller's buffer to this file.
     ///
     /// Corresponds to the `write_iter` function pointer in `struct file_operations`.
-    fn write_iter(data: <Self::Data as PointerWrapper>::Borrowed<'_>, iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
+    fn write_iter(
+        data: <Self::Data as PointerWrapper>::Borrowed<'_>,
+        iocb: &mut Kiocb,
+        iter: &mut IovIter,
+    ) -> Result<usize> {
         let file = iocb.get_file();
         let offset = iocb.get_offset();
         let written = Self::write(data, &file, iter, offset)?;
@@ -935,7 +1162,7 @@ pub trait Operations {
         Ok(bindings::POLLIN | bindings::POLLOUT | bindings::POLLRDNORM | bindings::POLLWRNORM)
     }
 
-        /// Splice data from file to a pipe
+    /// Splice data from file to a pipe
     ///
     /// Corresponds to the `splice_read` function pointer in `struct file_operations`.
     fn splice_read(
@@ -960,6 +1187,19 @@ pub trait Operations {
         _len: usize,
         _flags: u32,
     ) -> Result<usize> {
+        Err(Error::EINVAL)
+    }
+
+    /// Preallocate space for a file
+    ///
+    /// Corresponds to the `fallocate` function pointer in `struct file_operations`.
+    fn allocate_file(
+        _data: <Self::Data as PointerWrapper>::Borrowed<'_>
+        _file: &File,
+        _mode: FileAllocMode,
+        _offset: bindings::loff_t,
+        _length: bindings::loff_t,
+    ) -> Result {
         Err(Error::EINVAL)
     }
 }

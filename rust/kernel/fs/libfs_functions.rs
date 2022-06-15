@@ -2,9 +2,10 @@ use core::ptr;
 
 use crate::{
     bindings,
+    buffer_head::BufferHead,
     c_types::*,
     error::Error,
-    file::{File, SeekFrom},
+    file::{File, IoctlCommand, SeekFrom},
     fs::{
         dentry::Dentry, from_kernel_err_ptr, inode::Inode, kiocb::Kiocb, super_block::SuperBlock,
         super_operations::Kstatfs, DeclaredFileSystemType, FileSystemBase,
@@ -17,12 +18,36 @@ use crate::{
     Result,
 };
 
+extern "C" {
+    fn rust_helper_generic_cont_expand_simple(
+        inode: *mut bindings::inode,
+        size: bindings::loff_t,
+    ) -> c_int;
+    fn rust_helper_sync_mapping_buffers(mapping: *mut bindings::address_space) -> c_int;
+    fn rust_helper_brelse(bh: *mut bindings::buffer_head);
+}
+
 pub fn generic_file_read_iter(iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
     Error::parse_int(unsafe { bindings::generic_file_read_iter(iocb.as_ptr_mut(), iter.ptr) as _ })
 }
 
 pub fn generic_file_write_iter(iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
     Error::parse_int(unsafe { bindings::generic_file_write_iter(iocb.as_ptr_mut(), iter.ptr) as _ })
+}
+
+pub fn generic_file_fsync(
+    file: &mut File,
+    start: bindings::loff_t,
+    end: bindings::loff_t,
+    datasync: i32,
+) -> Result {
+    Error::parse_int(unsafe { bindings::generic_file_fsync(file.ptr, start, end, datasync) })
+        .map(|_| ())
+}
+
+pub fn compat_ptr_ioctl(file: &File, cmd: &mut IoctlCommand) -> Result<i32> {
+    let (cmd, arg) = cmd.raw();
+    Error::parse_int(unsafe { bindings::compat_ptr_ioctl(file.ptr, cmd, arg as _) }).map(|x| x as _)
 }
 
 pub fn generic_file_mmap(file: &File, vma: &mut mm::virt::Area) -> Result {
@@ -196,6 +221,23 @@ pub fn mount_nodev<T: DeclaredFileSystemType>(
     })
 }
 
+pub fn mount_bdev<T: DeclaredFileSystemType>(
+    flags: c_int,
+    dev_name: &CStr,
+    data: Option<&mut T::MountOptions>,
+) -> Result<*mut bindings::dentry> {
+    from_kernel_err_ptr(unsafe {
+        bindings::mount_bdev(
+            T::file_system_type(),
+            flags,
+            dev_name.as_char_ptr(),
+            data.map(|p| p as *mut _ as *mut _)
+                .unwrap_or_else(ptr::null_mut),
+            Some(fill_super_callback::<T>),
+        )
+    })
+}
+
 unsafe extern "C" fn fill_super_callback<T: FileSystemBase>(
     sb: *mut bindings::super_block,
     data: *mut c_void,
@@ -213,6 +255,12 @@ unsafe extern "C" fn fill_super_callback<T: FileSystemBase>(
 pub fn kill_litter_super(sb: &mut SuperBlock) {
     unsafe {
         bindings::kill_litter_super(sb.as_ptr_mut());
+    }
+}
+
+pub fn kill_block_super(sb: &mut SuperBlock) {
+    unsafe {
+        bindings::kill_block_super(sb.as_ptr_mut());
     }
 }
 
@@ -270,9 +318,52 @@ pub fn simple_write_end(
     .map(|x| x as u32)
 }
 
-
 pub fn filemap_dirty_folio(address_space: &mut AddressSpace, folio: &mut Folio) -> bool {
     unsafe { bindings::filemap_dirty_folio(address_space as *mut _, folio as *mut _) }
+}
+
+pub fn generic_cont_expand_simple(inode: &mut Inode, size: bindings::loff_t) -> Result {
+    Error::parse_int(unsafe { rust_helper_generic_cont_expand_simple(inode.as_ptr_mut(), size) })
+        .map(|_| ())
+}
+
+pub fn filemap_fdatawrite_range(
+    mapping: *mut bindings::address_space,
+    start: bindings::loff_t,
+    end: bindings::loff_t,
+) -> Result {
+    Error::parse_int(unsafe { bindings::filemap_fdatawrite_range(mapping, start, end) }).map(|_| ())
+}
+
+pub fn filemap_fdatawrite(mapping: &mut AddressSpace) -> Result {
+    Error::parse_int(unsafe { bindings::filemap_fdatawrite(mapping) }).map(|_| ())
+}
+
+pub fn filemap_fdatawait_range(
+    mapping: *mut bindings::address_space,
+    start: bindings::loff_t,
+    end: bindings::loff_t,
+) -> Result {
+    Error::parse_int(unsafe { bindings::filemap_fdatawait_range(mapping, start, end) }).map(|_| ())
+}
+
+pub fn sync_mapping_buffers(mapping: *mut bindings::address_space) -> Result {
+    Error::parse_int(unsafe { rust_helper_sync_mapping_buffers(mapping) }).map(|_| ())
+}
+
+pub fn release_buffer(buffer_head: &mut BufferHead) {
+    unsafe {
+        rust_helper_brelse(buffer_head.as_ptr_mut());
+    }
+}
+
+pub fn sync_inode_metadata(inode: &mut Inode, wait: u32) -> Result {
+    Error::parse_int(unsafe { bindings::sync_inode_metadata(inode.as_ptr_mut(), wait as _) })
+        .map(|_| ())
+}
+
+pub fn filemap_flush(mapping: &mut AddressSpace) -> Result {
+    Error::parse_int(unsafe { bindings::filemap_flush(mapping as *mut _) }).map(|_| ())
 }
 
 crate::declare_c_vtable!(

@@ -1,8 +1,23 @@
-use core::mem;
-use core::ops::{Deref, DerefMut};
+use core::{
+    mem,
+    ops::{Deref, DerefMut},
+    ptr,
+};
 
-use crate::bindings;
-use crate::fs::super_operations::{SuperOperations, SuperOperationsVtable};
+use crate::{
+    bindings,
+    buffer_head::BufferHead,
+    c_types::*,
+    fs::super_operations::{SuperOperations, SuperOperationsVtable},
+    Result,
+};
+
+extern "C" {
+    fn rust_helper_sb_bread(
+        sb: *mut bindings::super_block,
+        block: bindings::sector_t,
+    ) -> *mut bindings::buffer_head;
+}
 
 #[repr(transparent)]
 pub struct SuperBlock(bindings::super_block);
@@ -15,6 +30,28 @@ impl SuperBlock {
     pub fn set_super_operations<OPS: SuperOperations>(&mut self, ops: &'static OPS) {
         self.s_op = unsafe { SuperOperationsVtable::<OPS>::build() };
         self.s_fs_info = ops as *const _ as *mut _;
+    }
+
+    pub fn get_super_operations<OPS: SuperOperations>(&mut self) -> Option<&'static OPS> {
+        self.s_op = ptr::null_mut();
+        let p = mem::replace(&mut self.s_fs_info, ptr::null_mut()).cast::<Ops>();
+        unsafe { p.as_ref() }
+    }
+
+    /// Returns the blocksize that is chosen
+    pub fn set_min_blocksize(&mut self, size: i32) -> c_int {
+        unsafe { bindings::sb_min_blocksize(self.as_ptr_mut(), size) }
+    }
+
+    pub fn set_blocksize(&mut self, size: i32) -> c_int {
+        unsafe { bindings::sb_set_blocksize(self.as_ptr_mut(), size) }
+    }
+
+    /// The returned buffer should be discarded using `libfs_functions::release_buffer` (otherwise
+    /// known as `brelse`).
+    #[must_use]
+    pub fn read_block<'this, 'ret>(&'this mut self, block: u64) -> Option<&'ret mut BufferHead> {
+        unsafe { rust_helper_sb_bread(self.as_ptr_mut(), block).as_mut() }.map(AsMut::as_mut)
     }
 }
 

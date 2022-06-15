@@ -516,7 +516,7 @@ macro_rules! declare_super_operations {
 /// File descriptors may be used from multiple threads/processes concurrently, so your type must be
 /// [`Sync`]. It must also be [`Send`] because [`FileOperations::release`] will be called from the
 /// thread that decrements that associated file's refcount to zero.
-pub trait SuperOperations: Send + Sync + Sized + Default {
+pub trait SuperOperations: Send + Sync + Sized {
     /// The methods to use to populate [`struct super_operations`].
     const TO_USE: ToUse;
 

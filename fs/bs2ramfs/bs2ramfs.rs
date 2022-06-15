@@ -24,7 +24,7 @@ use kernel::{
     mm,
     prelude::*,
     str::CStr,
-    types::{AddressSpace, Folio, Dev, Iattr, Kstat, Page, Path, UserNamespace},
+    types::{AddressSpace, Dev, Folio, Iattr, Kstat, Page, Path, UserNamespace},
     Error, Mode, Module,
 };
 

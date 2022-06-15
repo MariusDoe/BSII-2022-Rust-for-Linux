@@ -47,6 +47,10 @@ impl Mode {
     pub fn as_int(&self) -> ModeInt {
         self.0
     }
+
+    pub fn is_regular_file(self) -> bool {
+        self & Self::S_IFMT == Self::S_IFREG
+    }
 }
 
 #[rustfmt::skip]

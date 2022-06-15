@@ -3,7 +3,8 @@
 This repository contains the [Rust-for-Linux/linux](https://github.com/Rust-for-Linux/linux) kernel with some additions.
 
 - `fs/bs2ramfs`
-- various additions to the kernel crate
+- `fs/bs2fat`
+- various additions to the kernel crate, mainly abstractions for implementing file systems
 
 For the actual work on the kernel, please refer to [Rust-for-Linux/linux](https://github.com/Rust-for-Linux/linux) and the instructions there.
 

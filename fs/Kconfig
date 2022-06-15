@@ -21,6 +21,7 @@ config FS_IOMAP
 if BLOCK
 
 source "fs/bs2ramfs/Kconfig"
+source "fs/bs2fat/Kconfig"
 source "fs/ext2/Kconfig"
 source "fs/ext4/Kconfig"
 source "fs/jbd2/Kconfig"

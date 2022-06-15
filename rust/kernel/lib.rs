@@ -27,7 +27,6 @@
 #![feature(coerce_unsized)]
 #![feature(dispatch_from_dyn)]
 #![feature(unsize)]
-
 // TODO: Remove allows
 #![allow(missing_docs)]
 #![allow(improper_ctypes)]
@@ -46,6 +45,8 @@ pub mod bindings;
 
 #[cfg(CONFIG_ARM_AMBA)]
 pub mod amba;
+pub mod buffer;
+pub mod buffer_head;
 pub mod c_types;
 pub mod chrdev;
 #[cfg(CONFIG_COMMON_CLK)]
