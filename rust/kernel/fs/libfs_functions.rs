@@ -41,13 +41,13 @@ pub fn generic_file_fsync(
     end: bindings::loff_t,
     datasync: i32,
 ) -> Result {
-    Error::parse_int(unsafe { bindings::generic_file_fsync(file.ptr, start, end, datasync) })
+    Error::parse_int(unsafe { bindings::generic_file_fsync(file.as_mut_ptr(), start, end, datasync) })
         .map(|_| ())
 }
 
 pub fn compat_ptr_ioctl(file: &File, cmd: &mut IoctlCommand) -> Result<i32> {
     let (cmd, arg) = cmd.raw();
-    Error::parse_int(unsafe { bindings::compat_ptr_ioctl(file.ptr, cmd, arg as _) }).map(|x| x as _)
+    Error::parse_int(unsafe { bindings::compat_ptr_ioctl(file.as_mut_ptr(), cmd, arg as _) }).map(|x| x as _)
 }
 
 pub fn generic_file_mmap(file: &File, vma: &mut mm::virt::Area) -> Result {
