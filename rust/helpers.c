@@ -18,35 +18,31 @@
  * accidentally exposed.
  */
 
+#include <asm/io.h>
 #include <asm/unaligned.h>
+#include <linux/amba/bus.h>
 #include <linux/backing-dev.h>
 #include <linux/buffer_head.h>
 #include <linux/bug.h>
 #include <linux/build_bug.h>
 #include <linux/clk.h>
-#include <linux/uaccess.h>
-#include <linux/sched/signal.h>
 #include <linux/errname.h>
 #include <linux/gfp.h>
 #include <linux/highmem.h>
-#include <linux/iversion.h>
-#include <linux/mutex.h>
-#include <linux/pagemap.h>
-#include <linux/sched/signal.h>
-#include <linux/uaccess.h>
-#include <linux/uio.h>
-#include <linux/errname.h>
-#include <linux/mutex.h>
-#include <linux/platform_device.h>
-#include <linux/security.h>
-#include <asm/io.h>
 #include <linux/irq.h>
 #include <linux/irqchip/chained_irq.h>
 #include <linux/irqdomain.h>
-#include <linux/amba/bus.h>
-#include <linux/of_device.h>
-#include <linux/skbuff.h>
+#include <linux/iversion.h>
+#include <linux/mutex.h>
 #include <linux/netdevice.h>
+#include <linux/of_device.h>
+#include <linux/pagemap.h>
+#include <linux/platform_device.h>
+#include <linux/sched/signal.h>
+#include <linux/security.h>
+#include <linux/skbuff.h>
+#include <linux/uaccess.h>
+#include <linux/uio.h>
 
 __noreturn void rust_helper_BUG(void)
 {
