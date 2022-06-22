@@ -66,6 +66,16 @@ impl File {
         self.0.get()
     }
 
+    /// Provides a reference to the underlying file
+    pub(crate) fn as_ref(&self) -> &bindings::file {
+        let p = self.as_mut_ptr();
+        // SAFETY: See guarantees of `as_mut_ptr`
+        // TODO: For aliasing rules, see the comment on `impl File`
+        let p = unsafe { p.as_ref() };
+        // SAFETY: `self.as_mut_ptr()` is not null
+        unsafe { p.unwrap_unchecked() }
+    }
+
     /// Returns the current seek/cursor/pointer position (`struct file::f_pos`).
     pub fn pos(&self) -> u64 {
         // SAFETY: The file is valid because the shared reference guarantees a nonzero refcount.
@@ -101,7 +111,7 @@ impl File {
     }
 
     pub fn fmode(&self) -> FMode {
-        FMode::from_int(unsafe { self.as_mut_ptr().f_mode })
+        FMode::from_int(self.as_ref().f_mode)
     }
 
     /// Returns the credentials of the task that originally opened the file.
