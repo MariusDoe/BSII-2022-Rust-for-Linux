@@ -882,10 +882,10 @@ impl AllocMode {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct FileTimeFlags(u8);
+pub struct TimeFlags(u8);
 
 #[rustfmt::skip]
-impl FileTimeFlags {
+impl TimeFlags {
     pub const A: Self       = Self::from_int(1);
     pub const M: Self       = Self::from_int(2);
     pub const C: Self       = Self::from_int(4);
@@ -983,7 +983,7 @@ macro_rules! impl_flag_methods {
 }
 
 impl_flag_methods!(AllocMode, u8);
-impl_flag_methods!(FileTimeFlags, u8);
+impl_flag_methods!(TimeFlags, u8);
 impl_flag_methods!(FMode, u32);
 
 /// Trait for extracting file open arguments from kernel data structures.

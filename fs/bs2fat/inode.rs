@@ -1,6 +1,6 @@
 use kernel::{
     bindings,
-    file::FileTimeFlags,
+    file::TimeFlags,
     fs::{
         block_device::BlockDevice,
         inode::{Inode, WriteSync},
@@ -36,9 +36,9 @@ pub fn fat_cont_expand(inode: &mut Inode, size: bindings::loff_t) -> Result {
     fat_truncate_time(
         inode,
         None,
-        FileTimeFlags::empty()
-            .with(FileTimeFlags::C)
-            .with(FileTimeFlags::M),
+        TimeFlags::empty()
+            .with(TimeFlags::C)
+            .with(TimeFlags::M),
     );
     inode.mark_dirty();
 

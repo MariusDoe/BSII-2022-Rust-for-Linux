@@ -1,4 +1,4 @@
-use kernel::{bindings, file::FileTimeFlags, fs::inode::Inode};
+use kernel::{bindings, file::TimeFlags, fs::inode::Inode};
 
 use crate::{inode::FAT_ROOT_INO, super_ops::BS2FatSuperOps};
 
@@ -76,7 +76,7 @@ pub fn fat_time_to_unix_time(
 pub fn fat_truncate_time(
     inode: &mut Inode,
     now: Option<bindings::timespec64>,
-    flags: FileTimeFlags,
+    flags: TimeFlags,
 ) {
     if inode.i_ino == FAT_ROOT_INO {
         return;
@@ -85,7 +85,7 @@ pub fn fat_truncate_time(
     // niklas: I changed the signature to take `now` by value, because we only read from it anyways
     let now = now.unwrap_or_else(|| inode.current_time());
 
-    if flags.has(FileTimeFlags::A) {
+    if flags.has(TimeFlags::A) {
         let sb_info: &BS2FatSuperOps = todo!(); // see allocate file
         let tz_offset = sb_info.timezone_offset();
         let seconds = now.tv_sec - tz_offset;
@@ -95,11 +95,11 @@ pub fn fat_truncate_time(
             tv_nsec: 0,
         };
     }
-    if flags.has(FileTimeFlags::C) {
+    if flags.has(TimeFlags::C) {
         // niklas: I didn't bother to add the check for vfat
         inode.i_ctime = fat_timespec64_trunc_2secs(now);
     }
-    if flags.has(FileTimeFlags::M) {
+    if flags.has(TimeFlags::M) {
         inode.i_mtime = fat_timespec64_trunc_2secs(now);
     }
 }
