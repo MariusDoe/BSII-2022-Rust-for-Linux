@@ -610,7 +610,7 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         },
         copy_file_range: None,
         fallocate: if T::TO_USE.allocate_file {
-            Some(fallocate_callback)
+            Some(Self::fallocate_callback)
         } else {
             None
         },
@@ -624,7 +624,7 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
             None
         },
         get_unmapped_area: if T::TO_USE.get_unmapped_area {
-            Some(get_unmapped_area_callback)
+            Some(Self::get_unmapped_area_callback)
         } else {
             None
         },
@@ -654,12 +654,12 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         setlease: None,
         show_fdinfo: None,
         splice_read: if T::TO_USE.splice_read {
-            Some(splice_read_callback)
+            Some(Self::splice_read_callback)
         } else {
             None
         },
         splice_write: if T::TO_USE.splice_write {
-            Some(splice_write_callback)
+            Some(Self::splice_write_callback)
         } else {
             None
         },
