@@ -45,7 +45,6 @@ pub mod bindings;
 
 #[cfg(CONFIG_ARM_AMBA)]
 pub mod amba;
-pub mod buffer;
 pub mod buffer_head;
 pub mod c_types;
 pub mod chrdev;
