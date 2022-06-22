@@ -1,6 +1,6 @@
 use kernel::{
     bindings,
-    file_operations::FileTimeFlags,
+    file::FileTimeFlags,
     fs::{
         block_device::BlockDevice,
         inode::{Inode, WriteSync},

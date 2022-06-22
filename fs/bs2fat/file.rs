@@ -3,8 +3,7 @@ use core::ops::DerefMut;
 use kernel::{
     bindings,
     c_types::*,
-    file::File,
-    file_operations::{FMode, FileAllocMode, FileOperations, IoctlCommand, SeekFrom},
+    file::{File, FMode, FileAllocMode, Operations, IoctlCommand, SeekFrom},
     fs::{inode::Inode, kiocb::Kiocb, libfs_functions},
     iov_iter::IovIter,
     prelude::*,
@@ -29,7 +28,7 @@ enum BLK_RW {
 
 pub struct BS2FatFileOps;
 
-impl FileOperations for BS2FatFileOps {
+impl Operations for BS2FatFileOps {
     kernel::declare_file_operations!(
         // release, // always used
         read_iter,

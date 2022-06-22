@@ -1,4 +1,4 @@
-use kernel::{bindings, file_operations::FileTimeFlags, fs::inode::Inode};
+use kernel::{bindings, file::FileTimeFlags, fs::inode::Inode};
 
 use crate::{inode::FAT_ROOT_INO, super_ops::BS2FatSuperOps};
 

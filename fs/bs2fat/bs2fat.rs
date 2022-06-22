@@ -15,6 +15,7 @@ use kernel::{
     str::CStr,
     sync::Mutex,
     Error,
+    Module,
 };
 
 mod bootsector;
@@ -301,7 +302,7 @@ impl FileSystemBase for BS2Fat {
 
 kernel::declare_fs_type!(BS2Fat, BS2FAT_FS_TYPE);
 
-impl KernelModule for BS2Fat {
+impl Module for BS2Fat {
     fn init() -> Result<Self> {
         pr_emerg!("bs2 fat in action");
         libfs_functions::register_filesystem::<Self>().map(move |_| Self)
