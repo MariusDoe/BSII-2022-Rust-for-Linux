@@ -1194,7 +1194,7 @@ pub trait Operations {
     ///
     /// Corresponds to the `fallocate` function pointer in `struct file_operations`.
     fn allocate_file(
-        _data: <Self::Data as PointerWrapper>::Borrowed<'_>
+        _data: <Self::Data as PointerWrapper>::Borrowed<'_>,
         _file: &File,
         _mode: FileAllocMode,
         _offset: bindings::loff_t,

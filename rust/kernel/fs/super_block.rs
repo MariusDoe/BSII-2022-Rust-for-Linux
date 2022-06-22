@@ -33,7 +33,7 @@ impl SuperBlock {
 
     pub fn get_super_operations<OPS: SuperOperations>(&mut self) -> Option<&'static OPS> {
         self.s_op = ptr::null_mut();
-        let p = mem::replace(&mut self.s_fs_info, ptr::null_mut()).cast::<Ops>();
+        let p = mem::replace(&mut self.s_fs_info, ptr::null_mut()).cast::<OPS>();
         unsafe { p.as_ref() }
     }
 
