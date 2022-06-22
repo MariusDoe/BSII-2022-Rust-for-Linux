@@ -767,11 +767,5 @@ static_assert(__builtin_types_compatible_p(size_t, uintptr_t),
 	      "size_t must match uintptr_t, what architecture is this??");
 #endif
 
-long rust_helper_congestion_wait(int sync, long timeout)
-{
-	return congestion_wait(sync, timeout);
-}
-EXPORT_SYMBOL_GPL(rust_helper_congestion_wait);
-
 const long RUST_HELPER_HZ = HZ;
 EXPORT_SYMBOL_GPL(RUST_HELPER_HZ);
