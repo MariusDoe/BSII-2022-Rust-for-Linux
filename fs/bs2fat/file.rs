@@ -20,12 +20,6 @@ extern "C" {
     fn rust_helper_congestion_wait(sync: c_int, timeout: c_long) -> c_long;
 }
 
-// TODO: include/linux/backing-dev-defs.h, doesnt exist in bindgen
-enum BLK_RW {
-    ASYNC = 0,
-    SYNC = 1,
-}
-
 pub struct BS2FatFileOps;
 
 impl Operations for BS2FatFileOps {
@@ -43,12 +37,12 @@ impl Operations for BS2FatFileOps {
         allocate_file
     );
 
-    fn release(_obj: Self::Wrapper, file: &File) {
+    fn release(_data: Self::Data, file: &File) {
         // Assumption: Inode stems from file (! please verify); TODO:
         let inode: &mut Inode = file.inode();
         if file.fmode().has(FMode::FMODE_WRITE) && msdos_sb(inode.super_block_mut()).options.flush {
             fat_flush_inodes(inode.super_block_mut(), Some(inode), None);
-            unsafe { rust_helper_congestion_wait(BLK_RW::ASYNC as _, RUST_HELPER_HZ / 10) };
+            unsafe { bindings::io_schedule_timeout(RUST_HELPER_HZ / 10) };
         }
     }
 
