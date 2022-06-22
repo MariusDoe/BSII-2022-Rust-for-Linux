@@ -9,7 +9,7 @@ use crate::{
     bindings, c_types,
     cred::Credential,
     error::{code::*, from_kernel_result, Error, Result},
-    fs::{fs::inode::Inode, kiocb::Kiocb, BuildVtable},
+    fs::{inode::Inode, kiocb::Kiocb, BuildVtable},
     io_buffer::{IoBufferReader, IoBufferWriter},
     iov_iter::IovIter,
     mm,

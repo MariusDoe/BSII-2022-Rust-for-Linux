@@ -9,7 +9,6 @@ use crate::{
     buffer_head::BufferHead,
     c_types::*,
     fs::super_operations::{SuperOperations, SuperOperationsVtable},
-    Result,
 };
 
 extern "C" {
