@@ -58,7 +58,11 @@ impl File {
         unsafe { &*ptr.cast() }
     }
 
+    /// Provides a *mut to the underlying file
+    ///
+    /// The pointer is properly aligned, dereferencable and points to an initialized instance
     pub(crate) fn as_mut_ptr(&self) -> *mut bindings::file {
+        // Since `&self.0` is a valid reference, thus `self.0.get()` fulfills the above guarantees
         self.0.get()
     }
 
