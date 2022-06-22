@@ -579,7 +579,7 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
     ) -> c_types::c_long {
         from_kernel_result! {
             let f = unsafe { T::Data::borrow((*file).private_data) };
-            T::allocate_file(f, unsafe { File::from_ptr(file) }, FileAllocMode::from_int(mode as _), offset, length).map(|()| 0)
+            T::allocate_file(f, unsafe { File::from_ptr(file) }, AllocMode::from_int(mode as _), offset, length).map(|()| 0)
         }
     }
 
@@ -868,10 +868,10 @@ impl IoctlCommand {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct FileAllocMode(u8);
+pub struct AllocMode(u8);
 
 #[rustfmt::skip]
-impl FileAllocMode {
+impl AllocMode {
     pub const KEEP_SIZE: Self      = Self::from_int(0x01);
     pub const PUNCH_HOLE: Self     = Self::from_int(0x02);
     pub const NO_HIDE_STALE: Self  = Self::from_int(0x04);
@@ -982,7 +982,7 @@ macro_rules! impl_flag_methods {
     };
 }
 
-impl_flag_methods!(FileAllocMode, u8);
+impl_flag_methods!(AllocMode, u8);
 impl_flag_methods!(FileTimeFlags, u8);
 impl_flag_methods!(FMode, u32);
 
@@ -1220,7 +1220,7 @@ pub trait Operations {
     fn allocate_file(
         _data: <Self::Data as PointerWrapper>::Borrowed<'_>,
         _file: &File,
-        _mode: FileAllocMode,
+        _mode: AllocMode,
         _offset: bindings::loff_t,
         _length: bindings::loff_t,
     ) -> Result {

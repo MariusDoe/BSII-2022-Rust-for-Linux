@@ -3,7 +3,7 @@ use core::ops::DerefMut;
 use kernel::{
     bindings,
     c_types::*,
-    file::{File, FMode, FileAllocMode, Operations, IoctlCommand, SeekFrom},
+    file::{File, FMode, AllocMode, Operations, IoctlCommand, SeekFrom},
     fs::{inode::Inode, kiocb::Kiocb, libfs_functions},
     iov_iter::IovIter,
     prelude::*,
@@ -109,11 +109,11 @@ impl Operations for BS2FatFileOps {
     fn allocate_file(
         &self,
         file: &File,
-        mode: FileAllocMode,
+        mode: AllocMode,
         offset: bindings::loff_t,
         length: bindings::loff_t,
     ) -> Result {
-        if !mode.without(FileAllocMode::KEEP_SIZE).is_empty() {
+        if !mode.without(AllocMode::KEEP_SIZE).is_empty() {
             // No support for hole punch or other fallocate flags.
             return Err(Error::EOPNOTSUPP);
         }
@@ -127,7 +127,7 @@ impl Operations for BS2FatFileOps {
         let end_offset = offset + length;
         let sb_info: &BS2FatSuperOps = todo!(); // inode.super_block().super_ops().as_mut();
         let inode = inode.lock();
-        if mode.has(FileAllocMode::KEEP_SIZE) {
+        if mode.has(AllocMode::KEEP_SIZE) {
             pr_emerg!("since fat_add_cluster is not implemented, this isn't gonna end well");
             let size_on_disk = inode.i_blocks << 9;
             if end_offset <= size_on_disk as _ {
