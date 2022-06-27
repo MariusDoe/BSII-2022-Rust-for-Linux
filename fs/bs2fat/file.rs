@@ -6,6 +6,7 @@ use kernel::{
     file::{File, FMode, AllocMode, Operations, IoctlCommand, SeekFrom},
     fs::{inode::Inode, kiocb::Kiocb, libfs_functions},
     iov_iter::IovIter,
+    mm::virt::Area,
     prelude::*,
     Error, Result,
 };
@@ -84,7 +85,7 @@ impl Operations for BS2FatFileOps {
         unimplemented!()
     }
 
-    fn mmap(_data: (), file: &File, vma: &mut bindings::vm_area_struct) -> Result {
+    fn mmap(_data: (), file: &File, vma: &mut Area) -> Result {
         libfs_functions::generic_file_mmap(file, vma)
     }
 
