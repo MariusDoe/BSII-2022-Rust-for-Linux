@@ -37,6 +37,10 @@ impl Operations for BS2FatFileOps {
         allocate_file
     );
 
+    fn open(context: &(), file: &File) -> Result<Self::Data> {
+        unimplemented!()
+    }
+
     fn release(_data: Self::Data, file: &File) {
         // Assumption: Inode stems from file (! please verify); TODO:
         let inode: &mut Inode = file.inode();
@@ -46,27 +50,27 @@ impl Operations for BS2FatFileOps {
         }
     }
 
-    fn read_iter(&self, iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
+    fn read_iter(_data: (), iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
         libfs_functions::generic_file_read_iter(iocb, iter)
     }
 
-    fn write_iter(&self, iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
+    fn write_iter(_data: (), iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
         libfs_functions::generic_file_write_iter(iocb, iter)
     }
 
-    fn seek(&self, file: &File, offset: SeekFrom) -> Result<u64> {
+    fn seek(_data: (), file: &File, offset: SeekFrom) -> Result<u64> {
         libfs_functions::generic_file_llseek(file, offset)
     }
 
-    fn ioctl(&self, _file: &File, _cmd: &mut IoctlCommand) -> Result<i32> {
+    fn ioctl(_data: (), _file: &File, _cmd: &mut IoctlCommand) -> Result<i32> {
         unimplemented!()
     }
 
-    fn compat_ioctl(&self, file: &File, cmd: &mut IoctlCommand) -> Result<i32> {
+    fn compat_ioctl(_data: (), file: &File, cmd: &mut IoctlCommand) -> Result<i32> {
         libfs_functions::compat_ptr_ioctl(file, cmd)
     }
 
-    fn fsync(&self, file: &File, start: u64, end: u64, datasync: bool) -> Result<u32> {
+    fn fsync(_data: (), file: &File, start: u64, end: u64, datasync: bool) -> Result<u32> {
         // let inode: inode = file.f_mapping.host;
         // int err;
 
@@ -80,12 +84,12 @@ impl Operations for BS2FatFileOps {
         unimplemented!()
     }
 
-    fn mmap(&self, file: &File, vma: &mut bindings::vm_area_struct) -> Result {
+    fn mmap(_data: (), file: &File, vma: &mut bindings::vm_area_struct) -> Result {
         libfs_functions::generic_file_mmap(file, vma)
     }
 
     fn splice_read(
-        &self,
+        _data: (),
         file: &File,
         pos: *mut i64,
         pipe: &mut bindings::pipe_inode_info,
@@ -96,7 +100,7 @@ impl Operations for BS2FatFileOps {
     }
 
     fn splice_write(
-        &self,
+        _data: (),
         pipe: &mut bindings::pipe_inode_info,
         file: &File,
         pos: *mut i64,
@@ -107,7 +111,7 @@ impl Operations for BS2FatFileOps {
     }
 
     fn allocate_file(
-        &self,
+        _data: (),
         file: &File,
         mode: AllocMode,
         offset: bindings::loff_t,
