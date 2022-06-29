@@ -9,7 +9,7 @@ use kernel::{
 
 use crate::{time::SECS_PER_MIN, BS2FatMountOptions, FAT12_MAX_CLUSTERS, FAT16_MAX_CLUSTERS};
 
-pub fn msdos_sb(sb: &mut SuperBlock) -> &mut BS2FatSuperOps {
+pub(crate) fn msdos_sb(sb: &mut SuperBlock) -> &mut BS2FatSuperOps {
     // TODO: use own type for this void* field?
     //&*((*sb).s_fs_info as *const T)
     unsafe {
@@ -20,9 +20,9 @@ pub fn msdos_sb(sb: &mut SuperBlock) -> &mut BS2FatSuperOps {
 }
 
 /// The super operations for BS2FAT
-pub struct BS2FatSuperOps {
-    pub info: BS2FatSuperInfo,
-    pub mutex: BS2FatSuperMutex,
+pub(crate) struct BS2FatSuperOps {
+    pub(crate) info: BS2FatSuperInfo,
+    pub(crate) mutex: BS2FatSuperMutex,
 }
 
 impl BS2FatSuperOps {
@@ -31,7 +31,7 @@ impl BS2FatSuperOps {
     /// # Safety
     ///
     /// The caller must call [`Mutex::init_lock`] on all mutexes before using them.
-    pub unsafe fn new_from_info(info: BS2FatSuperInfo) -> Self {
+    pub(crate) unsafe fn new_from_info(info: BS2FatSuperInfo) -> Self {
         // SAFETY: guaranteed by caller
         let mutex = unsafe { BS2FatSuperMutex::new_uninit() };
         Self { info, mutex }
@@ -54,53 +54,53 @@ impl DerefMut for BS2FatSuperOps {
 
 /// Contains various information describing the file system
 #[derive(Default)]
-pub struct BS2FatSuperInfo {
-    pub sectors_per_cluster: u16,
-    pub cluster_bits: u16,
-    pub cluster_size: u32,
+pub(crate) struct BS2FatSuperInfo {
+    pub(crate) sectors_per_cluster: u16,
+    pub(crate) cluster_bits: u16,
+    pub(crate) cluster_size: u32,
 
     /// number of tables
-    pub fats: u8,
+    pub(crate) fats: u8,
     /// 12, 16 (, 32)
-    pub fat_bits: u8,
-    pub fat_start: u16,
-    pub fat_length: u16,
+    pub(crate) fat_bits: u8,
+    pub(crate) fat_start: u16,
+    pub(crate) fat_length: u16,
 
-    pub dir_start: usize,
-    pub dir_entries: u16,
+    pub(crate) dir_start: usize,
+    pub(crate) dir_entries: u16,
 
-    pub data_start: usize,
+    pub(crate) data_start: usize,
 
     /// maximum cluster number
-    pub max_cluster: usize,
-    pub root_cluster: isize,
-    pub previous_free: u32,
-    pub free_clusters: u32, /* C sets this to -1 sometimes, we probably want to use u32::MAX for that */
-    pub free_clusters_valid: u32,
+    pub(crate) max_cluster: usize,
+    pub(crate) root_cluster: isize,
+    pub(crate) previous_free: u32,
+    pub(crate) free_clusters: u32, /* C sets this to -1 sometimes, we probably want to use u32::MAX for that */
+    pub(crate) free_clusters_valid: u32,
 
-    pub options: BS2FatMountOptions,
+    pub(crate) options: BS2FatMountOptions,
 
     /// directory entries per block
-    pub dir_per_block: i32,
-    pub dir_per_block_bits: i32,
+    pub(crate) dir_per_block: i32,
+    pub(crate) dir_per_block_bits: i32,
 
-    pub volume_id: u32,
+    pub(crate) volume_id: u32,
 
-    pub fat_inode: Option<*mut Inode>,
-    pub fsinfo_inode: Option<*mut Inode>,
+    pub(crate) fat_inode: Option<*mut Inode>,
+    pub(crate) fsinfo_inode: Option<*mut Inode>,
 
     /// fs state before mount
-    pub dirty: u32,
+    pub(crate) dirty: u32,
 }
 
 /// Contains mutexes used for implementing the super operations
-pub struct BS2FatSuperMutex {
+pub(crate) struct BS2FatSuperMutex {
     // niklas: Mutex around () is closest to the C way
     // if users of the guarded values _always_ lock the mutex, we can move the protected value into
     // the Mutex as one would do in Rust
-    pub fat_lock: Mutex<()>,
-    // pub nfs_build_inode_lock: Mutex<()>, // we don't need that I think
-    pub s_lock: Mutex<()>,
+    pub(crate) fat_lock: Mutex<()>,
+    // pub(crate) nfs_build_inode_lock: Mutex<()>, // we don't need that I think
+    pub(crate) s_lock: Mutex<()>,
 }
 
 impl BS2FatSuperMutex {
@@ -125,11 +125,11 @@ unsafe impl Send for BS2FatSuperOps {}
 unsafe impl Sync for BS2FatSuperOps {}
 
 impl BS2FatSuperInfo {
-    pub fn is_fat16(&self) -> bool {
+    pub(crate) fn is_fat16(&self) -> bool {
         self.fat_bits == 16
     }
 
-    pub fn max_fats(&self) -> usize {
+    pub(crate) fn max_fats(&self) -> usize {
         if self.is_fat16() {
             FAT16_MAX_CLUSTERS
         } else {
@@ -137,7 +137,7 @@ impl BS2FatSuperInfo {
         }
     }
 
-    pub fn timezone_offset(&self) -> i64 {
+    pub(crate) fn timezone_offset(&self) -> i64 {
         let minutes = if self.options.timezone_set {
             -self.options.time_offset
         } else {

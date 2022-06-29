@@ -2,58 +2,63 @@ use core::ptr;
 
 use kernel::{fs::super_block::SuperBlock, prelude::*, Error, Result};
 
-pub const MSDOS_NAME: usize = 11; // maximum name length
+pub(crate) const MSDOS_NAME: usize = 11; // maximum name length
 
 #[repr(C)]
-pub struct BootSector {
-    pub _ignored: [u8; 3],
-    pub _system_id: [u8; 8],
-    pub sector_size: [u8; 2],
-    pub sec_per_clus: u8,
-    pub reserved: u16, /* niklas: in C, this is explicitly little endian, but the type aliases for both endianneses (?) are identical */
-    pub fats: u8,
-    pub dir_entries: [u8; 2],
-    pub sectors: [u8; 2],
-    pub media: u8,
-    pub fat_length: u16,
-    pub secs_track: u16,
-    pub heads: u16,
-    pub hidden: u32,
-    pub total_sect: u32,
+pub(crate) struct BootSector {
+    pub(crate) _ignored: [u8; 3],
+    pub(crate) _system_id: [u8; 8],
+    pub(crate) sector_size: [u8; 2],
+    pub(crate) sec_per_clus: u8,
+    pub(crate) reserved: u16, /* niklas: in C, this is explicitly little endian, but the type aliases for both endianneses (?) are identical */
+    pub(crate) fats: u8,
+    pub(crate) dir_entries: [u8; 2],
+    pub(crate) sectors: [u8; 2],
+    pub(crate) media: u8,
+    pub(crate) fat_length: u16,
+    pub(crate) secs_track: u16,
+    pub(crate) heads: u16,
+    pub(crate) hidden: u32,
+    pub(crate) total_sect: u32,
 
     // fat16
-    pub drive_number: u8,
-    pub state: u8,
-    pub signature: u8,
-    pub vol_id: [u8; 4],
-    pub vol_label: [u8; MSDOS_NAME],
-    pub fs_type: [u8; 8],
+    pub(crate) drive_number: u8,
+    pub(crate) state: u8,
+    pub(crate) signature: u8,
+    pub(crate) vol_id: [u8; 4],
+    pub(crate) vol_label: [u8; MSDOS_NAME],
+    pub(crate) fs_type: [u8; 8],
     // normally, this is a union with fat32 stuff, but ...
 }
 
 #[repr(C)]
 #[derive(Default)]
-pub struct BiosParamBlock {
-    pub sector_size: u16,
-    pub sectors_per_cluster: u8,
-    pub reserved: u16,
-    pub fats: u8,
-    pub dir_entries: u16,
-    pub sectors: u16,
-    pub fat_length: u16,
-    pub total_sectors: u32,
+pub(crate) struct BiosParamBlock {
+    pub(crate) sector_size: u16,
+    pub(crate) sectors_per_cluster: u8,
+    pub(crate) reserved: u16,
 
-    pub fat16_state: u8,
-    pub fat16_vol_id: u32,
+    pub(crate) fats: u8,
+    pub(crate) dir_entries: u16,
+    pub(crate) sectors: u16,
+    pub(crate) fat_length: u16,
+    pub(crate) total_sectors: u32,
 
-    pub _fat32_length: u32,
-    pub _fat32_root_cluster: u32,
-    pub _fat32_info_sector: u16,
-    pub _fat32_state: u8,
-    pub _fat32_vol_id: u32,
+    pub(crate) fat16_state: u8,
+    pub(crate) fat16_vol_id: u32,
+
+    pub(crate) _fat32_length: u32,
+    pub(crate) _fat32_root_cluster: u32,
+    pub(crate) _fat32_info_sector: u16,
+    pub(crate) _fat32_state: u8,
+    pub(crate) _fat32_vol_id: u32,
 }
 
-pub fn fat_read_bpb(sb: &mut SuperBlock, b: BootSector, silent: bool) -> Result<BiosParamBlock> {
+pub(crate) fn fat_read_bpb(
+    sb: &mut SuperBlock,
+    b: BootSector,
+    silent: bool,
+) -> Result<BiosParamBlock> {
     let bpb = unsafe {
         BiosParamBlock {
             sector_size: u16::from_le_bytes(ptr::addr_of!(b.sector_size).read_unaligned()),

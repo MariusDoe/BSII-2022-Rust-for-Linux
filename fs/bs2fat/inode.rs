@@ -13,10 +13,10 @@ use kernel::{
 
 use crate::{super_ops::msdos_sb, time::fat_truncate_time};
 
-pub const FAT_ROOT_INO: u64 = 1;
-pub const FAT_FSINFO_INO: u64 = 2;
+pub(crate) const FAT_ROOT_INO: u64 = 1;
+pub(crate) const FAT_FSINFO_INO: u64 = 2;
 
-pub fn fat_add_cluster(_inode: &mut Inode) -> Result {
+pub(crate) fn fat_add_cluster(_inode: &mut Inode) -> Result {
     // int err, cluster;
 
     // err = fat_alloc_clusters(inode, &cluster, 1);
@@ -31,14 +31,12 @@ pub fn fat_add_cluster(_inode: &mut Inode) -> Result {
     unimplemented!()
 }
 
-pub fn fat_cont_expand(inode: &mut Inode, size: bindings::loff_t) -> Result {
+pub(crate) fn fat_cont_expand(inode: &mut Inode, size: bindings::loff_t) -> Result {
     libfs_functions::generic_cont_expand_simple(inode, size)?;
     fat_truncate_time(
         inode,
         None,
-        TimeFlags::empty()
-            .with(TimeFlags::C)
-            .with(TimeFlags::M),
+        TimeFlags::empty().with(TimeFlags::C).with(TimeFlags::M),
     );
     inode.mark_dirty();
 
@@ -58,7 +56,7 @@ pub fn fat_cont_expand(inode: &mut Inode, size: bindings::loff_t) -> Result {
         .and_then(|()| libfs_functions::filemap_fdatawait_range(mapping, start, start + count - 1))
 }
 
-pub fn fat_flush_inodes(
+pub(crate) fn fat_flush_inodes(
     sb: &mut SuperBlock,
     i1: Option<&mut Inode>,
     i2: Option<&mut Inode>,
@@ -78,7 +76,7 @@ pub fn fat_flush_inodes(
     })
 }
 
-pub fn writeback_inode(inode: &mut Inode) -> Result {
+pub(crate) fn writeback_inode(inode: &mut Inode) -> Result {
     /* if we used wait=1, sync_inode_metadata waits for the io for the
      * inode to finish.  So wait=0 is sent down to sync_inode_metadata
      * and filemap_fdatawrite is used for the data blocks

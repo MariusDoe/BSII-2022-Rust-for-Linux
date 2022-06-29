@@ -3,7 +3,7 @@ use core::ops::DerefMut;
 use kernel::{
     bindings,
     c_types::*,
-    file::{File, FMode, AllocMode, Operations, IoctlCommand, SeekFrom},
+    file::{AllocMode, FMode, File, IoctlCommand, Operations, SeekFrom},
     fs::{inode::Inode, kiocb::Kiocb, libfs_functions},
     iov_iter::IovIter,
     mm::virt::Area,
@@ -21,7 +21,7 @@ extern "C" {
     fn rust_helper_congestion_wait(sync: c_int, timeout: c_long) -> c_long;
 }
 
-pub struct BS2FatFileOps;
+pub(crate) struct BS2FatFileOps;
 
 impl Operations for BS2FatFileOps {
     kernel::declare_file_operations!(

@@ -6,13 +6,13 @@ use crate::{
 };
 
 // DOS dates from 1980/1/1 through 2107/12/31
-pub const FAT_DATE_MIN: u16 = 0 << 9 | 1 << 5 | 1;
-pub const FAT_DATE_MAX: u16 = 127 << 9 | 12 << 5 | 31;
-pub const FAT_TIME_MAX: u16 = 23 << 11 | 59 << 5 | 29;
+pub(crate) const FAT_DATE_MIN: u16 = 0 << 9 | 1 << 5 | 1;
+pub(crate) const FAT_DATE_MAX: u16 = 127 << 9 | 12 << 5 | 31;
+pub(crate) const FAT_TIME_MAX: u16 = 23 << 11 | 59 << 5 | 29;
 
-pub const SECS_PER_MIN: i64 = 60;
-pub const SECS_PER_HOUR: i64 = 60 * 60;
-pub const SECS_PER_DAY: i64 = 60 * 60 * 24;
+pub(crate) const SECS_PER_MIN: i64 = 60;
+pub(crate) const SECS_PER_HOUR: i64 = 60 * 60;
+pub(crate) const SECS_PER_DAY: i64 = 60 * 60 * 24;
 
 /// days between 1.1.70 and 1.1.80 (2 leap days)
 const DAYS_DELTA: i64 = 365 * 10 + 2;
@@ -29,7 +29,7 @@ const fn is_leap_year(year: i64) -> bool {
 /// IMPORTANT: in contrast to the C signature, this function expects the given parameters to be in
 /// the CPUs native representation and _does not_ convert them from little endian. As a caller, you
 /// have to do this yourself
-pub fn fat_time_to_unix_time(
+pub(crate) fn fat_time_to_unix_time(
     sbi: &BS2FatSuperInfo,
     time: u16,
     date: u16,
@@ -76,7 +76,11 @@ pub fn fat_time_to_unix_time(
 ///       msdos - 2 seconds
 ///       vfat  - 10 milliseconds // niklas: we don't care
 ///     atime - 24 hours (00:00:00 in local timezone)
-pub fn fat_truncate_time(inode: &mut Inode, now: Option<bindings::timespec64>, flags: TimeFlags) {
+pub(crate) fn fat_truncate_time(
+    inode: &mut Inode,
+    now: Option<bindings::timespec64>,
+    flags: TimeFlags,
+) {
     if inode.i_ino == FAT_ROOT_INO {
         return;
     }
