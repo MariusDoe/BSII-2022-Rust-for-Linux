@@ -101,7 +101,9 @@ impl FileSystemBase for BS2Fat {
 
             // TODO some nls things
 
-            if let Some(mut ops) = sb.take_super_operations::<BS2FatSuperOps>() {
+            if let Some(ops) = sb.take_super_operations::<BS2FatSuperOps>() {
+                // SAFETY: ops was written with Box::leak before
+                let mut ops: Box<BS2FatSuperOps> = unsafe { Box::from_raw(ops as *const _ as _) };
                 unsafe {
                     if let Some(inode_ptr) = ops.fsinfo_inode.take() {
                         (*inode_ptr).put();
