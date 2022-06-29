@@ -1,3 +1,5 @@
+use core::ops::{Deref, DerefMut};
+
 use kernel::{
     bindings,
     fs::{inode::Inode, super_block::SuperBlock, super_operations::SuperOperations},
@@ -17,7 +19,42 @@ pub fn msdos_sb(sb: &mut SuperBlock) -> &mut BS2FatSuperOps {
     }
 }
 
+/// The super operations for BS2FAT
 pub struct BS2FatSuperOps {
+    pub info: BS2FatSuperInfo,
+    pub mutex: BS2FatSuperMutex,
+}
+
+impl BS2FatSuperOps {
+    /// Constructs a pinned instance.
+    ///
+    /// # Safety
+    ///
+    /// The caller must call [`Mutex::init_lock`] on all mutexes before using them.
+    pub unsafe fn new_from_info(info: BS2FatSuperInfo) -> Self {
+        // SAFETY: guaranteed by caller
+        let mutex = unsafe { BS2FatSuperMutex::new_uninit() };
+        Self { info, mutex }
+    }
+}
+
+impl Deref for BS2FatSuperOps {
+    type Target = BS2FatSuperInfo;
+
+    fn deref(&self) -> &Self::Target {
+        &self.info
+    }
+}
+
+impl DerefMut for BS2FatSuperOps {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.info
+    }
+}
+
+/// Contains various information describing the file system
+#[derive(Default)]
+pub struct BS2FatSuperInfo {
     pub sectors_per_cluster: u16,
     pub cluster_bits: u16,
     pub cluster_size: u32,
@@ -41,12 +78,6 @@ pub struct BS2FatSuperOps {
     pub free_clusters: u32, /* C sets this to -1 sometimes, we probably want to use u32::MAX for that */
     pub free_clusters_valid: u32,
 
-    // niklas: Mutex around () is closest to the C way
-    // if users of the guarded values _always_ lock the mutex, we can move the protected value into
-    // the Mutex as one would do in Rust
-    pub fat_lock: Mutex<()>,
-    // pub nfs_build_inode_lock: Mutex<()>, // we don't need that I think
-    pub s_lock: Mutex<()>,
     pub options: BS2FatMountOptions,
 
     /// directory entries per block
@@ -62,11 +93,38 @@ pub struct BS2FatSuperOps {
     pub dirty: u32,
 }
 
+/// Contains mutexes used for implementing the super operations
+pub struct BS2FatSuperMutex {
+    // niklas: Mutex around () is closest to the C way
+    // if users of the guarded values _always_ lock the mutex, we can move the protected value into
+    // the Mutex as one would do in Rust
+    pub fat_lock: Mutex<()>,
+    // pub nfs_build_inode_lock: Mutex<()>, // we don't need that I think
+    pub s_lock: Mutex<()>,
+}
+
+impl BS2FatSuperMutex {
+    /// Constructs self with uninitialised mutexes.
+    ///
+    /// # Safety
+    ///
+    /// The caller must call [`Mutex::init_lock`] on all mutexes before using them.
+    unsafe fn new_uninit() -> Self {
+        // SAFETY: guaranteed by caller
+        unsafe {
+            Self {
+                fat_lock: Mutex::new(()),
+                s_lock: Mutex::new(()),
+            }
+        }
+    }
+}
+
 // FIXME there isn't much to say, is there?
 unsafe impl Send for BS2FatSuperOps {}
 unsafe impl Sync for BS2FatSuperOps {}
 
-impl BS2FatSuperOps {
+impl BS2FatSuperInfo {
     pub fn is_fat16(&self) -> bool {
         self.fat_bits == 16
     }

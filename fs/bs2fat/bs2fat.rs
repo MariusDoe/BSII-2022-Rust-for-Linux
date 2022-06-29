@@ -1,5 +1,5 @@
 use alloc::boxed::Box;
-use core::{cmp::Ord, mem, pin::Pin, ptr};
+use core::{cmp::Ord, mem, ptr};
 
 use kernel::{
     bindings,
@@ -11,9 +11,7 @@ use kernel::{
     prelude::*,
     print::ExpectK,
     str::CStr,
-    sync::Mutex,
-    Error,
-    Module,
+    Error, Module,
 };
 
 mod bootsector;
@@ -26,7 +24,10 @@ use bootsector::{fat_read_bpb, BootSector};
 use super_ops::BS2FatSuperOps;
 use time::{fat_time_to_unix_time, FAT_DATE_MAX, FAT_DATE_MIN, FAT_TIME_MAX};
 
-use crate::inode::{FAT_FSINFO_INO, FAT_ROOT_INO};
+use crate::{
+    inode::{FAT_FSINFO_INO, FAT_ROOT_INO},
+    super_ops::BS2FatSuperInfo,
+};
 
 module! {
     type: BS2Fat,
@@ -53,6 +54,11 @@ struct BS2Fat;
 
 type Cluster = u32;
 
+enum FillSuperErrorKind {
+    Invalid,
+    Fail(Error),
+}
+
 impl FileSystemBase for BS2Fat {
     const NAME: &'static CStr = kernel::c_str!("bs2fat");
     const FS_FLAGS: c_int = (bindings::FS_REQUIRES_DEV | bindings::FS_ALLOW_IDMAP) as _;
@@ -76,199 +82,13 @@ impl FileSystemBase for BS2Fat {
         data: Option<&mut Self::MountOptions>,
         silent: c_int,
     ) -> Result {
-        enum FillSuperErrorKind {
-            Invalid,
-            Fail(Error),
-        }
-        use FillSuperErrorKind::*;
-
         let silent = silent == 1; // FIXME: why do we not do this in the lib callback?
 
-        // niklas: We really want to still write to that, but also we want to allocate and error
-        // early here
-        // I think we should create the boxed value here, but set it later. This would require a
-        // change in the SuperBlock signature, but I think it's good anyways
-        // MAYBE, we could even consider a FatSuperOpsBuilder that lets you set the fields over
-        // time and emits the final struct when its done
-        let mut ops = unsafe {
-            let mut ops = Box::<BS2FatSuperOps>::try_new_zeroed()?;
-            let mut ops_p = ops.as_mut_ptr();
-            ptr::addr_of_mut!((*ops_p).fat_lock).write(Mutex::new(()));
-            ptr::addr_of_mut!((*ops_p).s_lock).write(Mutex::new(()));
-            Pin::new(ops.assume_init())
-        };
-        // sb.set_super_operations(ops);
+        let res = init_superblock_and_info(&mut sb, silent);
 
-        let res = (|| -> core::result::Result<(), FillSuperErrorKind> {
-            sb.s_flags |= bindings::SB_NODIRATIME as u64;
-            sb.s_magic = MSDOS_SUPER_MAGIC;
-
-            // sb.s_export_op = &fat_export_ops; // FIXME
-
-            sb.s_time_gran = 1;
-            // sbi.nfs_build_inode_lock = Mutex::ratelimit_state_init(ops.ratelimit, DEFAULT_RATELIMIT_INTERVAL, DEFAULT_RATELIMIT_BURST); // FIXME
-            // parse_options(
-            //     sb,
-            //     data,
-            //     false, /* is_vfat */
-            //     silent,
-            //     &debug,
-            //     ops.options,
-            // )
-            // .map_err(Fail)?;
-
-            // niklas: C calls the given "setup" here, I inlined that
-            // niklas, later: let's first see how this is used, maybe we can make it rust-y and
-            // have a field of ops be a &(dyn InodeOperations) or so
-            // MSDOS_SB(sb)->dir_ops = &msdos_dir_inode_operations; // TODO This should be done in BS2FatSuperOps::default()
-            // sb.set_dentry_operations::<BS2FatDentryOps>();
-            sb.s_flags |= bindings::SB_NOATIME as u64;
-
-            sb.set_min_blocksize(512);
-            let buffer_head = sb.read_block(0).ok_or_else(|| {
-                pr_err!("unable to read boot sector");
-                Fail(Error::EIO)
-            })?;
-            let boot_sector = unsafe { buffer_head.b_data.cast::<BootSector>().read_unaligned() };
-            let bpb = fat_read_bpb(sb, boot_sector, silent);
-            libfs_functions::release_buffer(buffer_head);
-            let bpb = bpb.map_err(|e| if e == Error::EINVAL { Invalid } else { Fail(e) })?;
-
-            let logical_sector_size = bpb.sector_size as u64;
-            // FIXME see comment above
-            ops.sectors_per_cluster = bpb.sectors_per_cluster as _;
-
-            if logical_sector_size < sb.s_blocksize {
-                pr_err!(
-                    "logical sector size too small for device ({})",
-                    logical_sector_size
-                );
-                return Err(Fail(Error::EIO));
-            }
-
-            if logical_sector_size > sb.s_blocksize {
-                if sb.set_blocksize(logical_sector_size as _) != 0 {
-                    pr_err!("unable to set blocksize {}", logical_sector_size);
-                    return Err(Fail(Error::EIO));
-                }
-
-                if let Some(bh_resize) = sb.read_block(0) {
-                    libfs_functions::release_buffer(bh_resize);
-                } else {
-                    pr_err!(
-                        "unable to read boot sector (logical sector size {})",
-                        sb.s_blocksize
-                    );
-                    return Err(Fail(Error::EIO));
-                }
-            }
-
-            // mutex_init => TODO should be done in constructor / default
-            ops.cluster_size = sb.s_blocksize as u32 * ops.sectors_per_cluster as u32;
-            ops.cluster_bits = ops.cluster_size.trailing_zeros() as _; // TODO someone sanity-check please
-            ops.fats = bpb.fats;
-            ops.fat_bits = 0; // don't know yet
-            ops.fat_start = bpb.reserved;
-            ops.fat_length = bpb.fat_length;
-            ops.root_cluster = 0;
-            ops.free_clusters = u32::MAX; // don't know yet
-            ops.free_clusters_valid = 0;
-            ops.previous_free = FAT_START_ENT;
-            sb.s_maxbytes = 0xffffffff;
-            sb.s_time_min = fat_time_to_unix_time(&ops, 0, FAT_DATE_MIN, 0).tv_sec;
-            sb.s_time_max = fat_time_to_unix_time(&ops, FAT_TIME_MAX, FAT_DATE_MAX, 0).tv_sec;
-
-            // skipping over the
-            //     if (!sbi->fat_length && bpb.fat32_length) { ... }
-
-            ops.volume_id = bpb.fat16_vol_id;
-            ops.dir_per_block = (sb.s_blocksize / mem::size_of::<Bs2FatDirEntry>() as u64) as _;
-            ops.dir_per_block_bits = ops.dir_per_block.trailing_zeros() as _; // TODO someone sanity check please
-            ops.dir_start = ops.fat_start as usize + ops.fats as usize * ops.fat_length as usize;
-            ops.dir_entries = bpb.dir_entries;
-
-            if ops.dir_entries as i32 & (ops.dir_per_block - 1) != 0 {
-                if !silent {
-                    pr_err!("bogus number of directory entries ({})", ops.dir_entries);
-                }
-                return Err(Invalid);
-            }
-
-            let rootdir_sectors = ops.dir_entries as usize * mem::size_of::<Bs2FatDirEntry>()
-                / sb.s_blocksize as usize;
-            ops.data_start = ops.dir_start + rootdir_sectors;
-            let total_sectors = Some(bpb.sectors)
-                .filter(|&x| x != 0)
-                .unwrap_or(bpb.total_sectors as _);
-            let total_clusters =
-                (total_sectors as usize - ops.data_start) / ops.sectors_per_cluster as usize;
-
-            ops.fat_bits = match total_clusters {
-                x if x <= FAT12_MAX_CLUSTERS => 12,
-                _ => 16,
-            };
-
-            ops.dirty = (bpb.fat16_state & FAT_STATE_DIRTY) as _; // FIXME wrapper
-
-            // check that the table doesn't overflow
-            let fat_clusters = calc_fat_clusters(&sb);
-            let total_clusters = total_clusters.min(fat_clusters - FAT_START_ENT as usize);
-            if total_clusters > ops.max_fats() {
-                if !silent {
-                    pr_err!("count of clusters too big ({})", total_clusters);
-                }
-                return Err(Invalid);
-            }
-            ops.max_cluster = total_clusters + FAT_START_ENT as usize;
-
-            if ops.free_clusters > total_clusters as u32 {
-                ops.free_clusters = u32::MAX;
-            }
-            ops.previous_free = (ops.previous_free % ops.max_cluster as u32).max(FAT_START_ENT);
-
-            // set up enough so that it can read an inode
-            // FIXME currently, we haven't set the super ops yet, becaues we are still editing the
-            // struct
-            fat_hash_init(&mut sb);
-            dir_hash_init(&mut sb);
-            fat_ent_access_init(&mut sb);
-
-            // TODO something about nls and codepages, let's first check whether that is important
-
-            ops.fat_inode = Some(Inode::new(&mut sb).ok_or(Fail(Error::ENOMEM))?);
-            ops.fsinfo_inode = {
-                let inode = Inode::new(&mut sb).ok_or(Fail(Error::ENOMEM))?;
-                inode.i_ino = FAT_FSINFO_INO;
-                inode.insert_hash();
-                Some(inode)
-            };
-            sb.s_root = {
-                let mut inode = Inode::new(&mut sb).ok_or(Fail(Error::ENOMEM))?;
-                inode.i_ino = FAT_ROOT_INO;
-                inode.set_iversion(1);
-                if let Err(e) = fat_read_root(&mut inode) {
-                    inode.put();
-                    return Err(Fail(e));
-                }
-                inode.insert_hash();
-                fat_attach(&mut inode, 0);
-                Dentry::make_root(&mut inode)
-                    .ok_or_else(|| {
-                        pr_err!("get root inode failed");
-                        Fail(Error::ENOMEM)
-                    })?
-                    .as_ptr_mut()
-            };
-
-            // TODO something about the "discard" option
-
-            fat_set_state(&mut sb, 1, 0);
-
-            Ok(())
-        })();
-
-        res.map_err(|x| {
-            let error_val = match x {
+        res.map_err(|err| {
+            use FillSuperErrorKind::*;
+            let error_val = match err {
                 Invalid => {
                     if !silent {
                         // TODO: what is fat_msg? sb is given to it too ...
@@ -296,6 +116,170 @@ impl FileSystemBase for BS2Fat {
             error_val
         })
     }
+}
+
+fn init_superblock_and_info(
+    sb: &mut SuperBlock,
+    silent: bool,
+) -> core::result::Result<(), FillSuperErrorKind> {
+    use FillSuperErrorKind::*;
+
+    let mut info = BS2FatSuperInfo::default();
+
+    sb.s_flags |= bindings::SB_NODIRATIME as u64;
+    sb.s_magic = MSDOS_SUPER_MAGIC;
+    // sb.s_export_op = &fat_export_ops; // FIXME
+    sb.s_time_gran = 1;
+    // sbi.nfs_build_inode_lock = Mutex::ratelimit_state_init(ops.ratelimit, DEFAULT_RATELIMIT_INTERVAL, DEFAULT_RATELIMIT_BURST); // FIXME
+    // parse_options(
+    //     sb,
+    //     data,
+    //     false, /* is_vfat */
+    //     silent,
+    //     &debug,
+    //     ops.options,
+    // )
+    // .map_err(Fail)?;
+    // niklas: C calls the given "setup" here, I inlined that
+    // niklas, later: let's first see how this is used, maybe we can make it rust-y and
+    // have a field of ops be a &(dyn InodeOperations) or so
+    // MSDOS_SB(sb)->dir_ops = &msdos_dir_inode_operations; // TODO This should be done in BS2FatSuperOps::default()
+    // sb.set_dentry_operations::<BS2FatDentryOps>();
+    sb.s_flags |= bindings::SB_NOATIME as u64;
+    sb.set_min_blocksize(512);
+    let buffer_head = sb.read_block(0).ok_or_else(|| {
+        pr_err!("unable to read boot sector");
+        Fail(Error::EIO)
+    })?;
+    let boot_sector = unsafe { buffer_head.b_data.cast::<BootSector>().read_unaligned() };
+    let bpb = fat_read_bpb(sb, boot_sector, silent);
+    libfs_functions::release_buffer(buffer_head);
+    let bpb = bpb.map_err(|e| if e == Error::EINVAL { Invalid } else { Fail(e) })?;
+    let logical_sector_size = bpb.sector_size as u64;
+    // FIXME see comment above
+    info.sectors_per_cluster = bpb.sectors_per_cluster as _;
+    if logical_sector_size < sb.s_blocksize {
+        pr_err!(
+            "logical sector size too small for device ({})",
+            logical_sector_size
+        );
+        return Err(Fail(Error::EIO));
+    }
+    if logical_sector_size > sb.s_blocksize {
+        if sb.set_blocksize(logical_sector_size as _) != 0 {
+            pr_err!("unable to set blocksize {}", logical_sector_size);
+            return Err(Fail(Error::EIO));
+        }
+
+        if let Some(bh_resize) = sb.read_block(0) {
+            libfs_functions::release_buffer(bh_resize);
+        } else {
+            pr_err!(
+                "unable to read boot sector (logical sector size {})",
+                sb.s_blocksize
+            );
+            return Err(Fail(Error::EIO));
+        }
+    }
+    // mutex_init => TODO should be done in constructor / default
+    info.cluster_size = sb.s_blocksize as u32 * info.sectors_per_cluster as u32;
+    info.cluster_bits = info.cluster_size.trailing_zeros() as _;
+    // TODO someone sanity-check please
+    info.fats = bpb.fats;
+    info.fat_bits = 0;
+    // don't know yet
+    info.fat_start = bpb.reserved;
+    info.fat_length = bpb.fat_length;
+    info.root_cluster = 0;
+    info.free_clusters = u32::MAX;
+    // don't know yet
+    info.free_clusters_valid = 0;
+    info.previous_free = FAT_START_ENT;
+    sb.s_maxbytes = 0xffffffff;
+    sb.s_time_min = fat_time_to_unix_time(&info, 0, FAT_DATE_MIN, 0).tv_sec;
+    sb.s_time_max = fat_time_to_unix_time(&info, FAT_TIME_MAX, FAT_DATE_MAX, 0).tv_sec;
+    // skipping over the
+    //     if (!sbi->fat_length && bpb.fat32_length) { ... }
+    info.volume_id = bpb.fat16_vol_id;
+    info.dir_per_block = (sb.s_blocksize / mem::size_of::<Bs2FatDirEntry>() as u64) as _;
+    info.dir_per_block_bits = info.dir_per_block.trailing_zeros() as _;
+    // TODO someone sanity check please
+    info.dir_start = info.fat_start as usize + info.fats as usize * info.fat_length as usize;
+    info.dir_entries = bpb.dir_entries;
+    if info.dir_entries as i32 & (info.dir_per_block - 1) != 0 {
+        if !silent {
+            pr_err!("bogus number of directory entries ({})", info.dir_entries);
+        }
+        return Err(Invalid);
+    }
+    let rootdir_sectors =
+        info.dir_entries as usize * mem::size_of::<Bs2FatDirEntry>() / sb.s_blocksize as usize;
+    info.data_start = info.dir_start + rootdir_sectors;
+    let total_sectors = Some(bpb.sectors)
+        .filter(|&x| x != 0)
+        .unwrap_or(bpb.total_sectors as _);
+    let total_clusters =
+        (total_sectors as usize - info.data_start) / info.sectors_per_cluster as usize;
+    info.fat_bits = match total_clusters {
+        x if x <= FAT12_MAX_CLUSTERS => 12,
+        _ => 16,
+    };
+    info.dirty = (bpb.fat16_state & FAT_STATE_DIRTY) as _;
+    // FIXME wrapper
+    // check that the table doesn't overflow
+    let fat_clusters = calc_fat_clusters(&sb);
+    let total_clusters = total_clusters.min(fat_clusters - FAT_START_ENT as usize);
+    if total_clusters > info.max_fats() {
+        if !silent {
+            pr_err!("count of clusters too big ({})", total_clusters);
+        }
+        return Err(Invalid);
+    }
+    info.max_cluster = total_clusters + FAT_START_ENT as usize;
+    if info.free_clusters > total_clusters as u32 {
+        info.free_clusters = u32::MAX;
+    }
+    info.previous_free = (info.previous_free % info.max_cluster as u32).max(FAT_START_ENT);
+    // set up enough so that it can read an inode
+    // FIXME currently, we haven't set the super ops yet, becaues we are still editing the
+    // struct
+    fat_hash_init(sb);
+    dir_hash_init(sb);
+    fat_ent_access_init(sb);
+    // TODO something about nls and codepages, let's first check whether that is important
+    info.fat_inode = Some(Inode::new(sb).ok_or(Fail(Error::ENOMEM))?);
+    info.fsinfo_inode = {
+        let inode = Inode::new(sb).ok_or(Fail(Error::ENOMEM))?;
+        inode.i_ino = FAT_FSINFO_INO;
+        inode.insert_hash();
+        Some(inode)
+    };
+    sb.s_root = {
+        let mut inode = Inode::new(sb).ok_or(Fail(Error::ENOMEM))?;
+        inode.i_ino = FAT_ROOT_INO;
+        inode.set_iversion(1);
+        if let Err(e) = fat_read_root(&mut inode) {
+            inode.put();
+            return Err(Fail(e));
+        }
+        inode.insert_hash();
+        fat_attach(&mut inode, 0);
+        Dentry::make_root(&mut inode)
+            .ok_or_else(|| {
+                pr_err!("get root inode failed");
+                Fail(Error::ENOMEM)
+            })?
+            .as_ptr_mut()
+    };
+    // TODO something about the "discard" option
+    fat_set_state(sb, 1, 0);
+
+    // SAFETY: TODO
+    let ops = unsafe { BS2FatSuperOps::new_from_info(info) };
+    let pointer = Box::leak(Box::try_new(ops).map_err(|_| Fail(Error::ENOMEM))?);
+    sb.set_super_operations(pointer);
+
+    Ok(())
 }
 
 kernel::declare_fs_type!(BS2Fat, BS2FAT_FS_TYPE);

@@ -1,6 +1,9 @@
 use kernel::{bindings, file::TimeFlags, fs::inode::Inode};
 
-use crate::{inode::FAT_ROOT_INO, super_ops::BS2FatSuperOps};
+use crate::{
+    inode::FAT_ROOT_INO,
+    super_ops::{BS2FatSuperInfo, BS2FatSuperOps},
+};
 
 // DOS dates from 1980/1/1 through 2107/12/31
 pub const FAT_DATE_MIN: u16 = 0 << 9 | 1 << 5 | 1;
@@ -27,7 +30,7 @@ const fn is_leap_year(year: i64) -> bool {
 /// the CPUs native representation and _does not_ convert them from little endian. As a caller, you
 /// have to do this yourself
 pub fn fat_time_to_unix_time(
-    sbi: &BS2FatSuperOps,
+    sbi: &BS2FatSuperInfo,
     time: u16,
     date: u16,
     time_cs: u8,
