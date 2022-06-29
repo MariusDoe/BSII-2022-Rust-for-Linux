@@ -76,11 +76,7 @@ pub fn fat_time_to_unix_time(
 ///       msdos - 2 seconds
 ///       vfat  - 10 milliseconds // niklas: we don't care
 ///     atime - 24 hours (00:00:00 in local timezone)
-pub fn fat_truncate_time(
-    inode: &mut Inode,
-    now: Option<bindings::timespec64>,
-    flags: TimeFlags,
-) {
+pub fn fat_truncate_time(inode: &mut Inode, now: Option<bindings::timespec64>, flags: TimeFlags) {
     if inode.i_ino == FAT_ROOT_INO {
         return;
     }
