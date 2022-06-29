@@ -9,7 +9,6 @@ use kernel::{
         FileSystemType,
     },
     prelude::*,
-    print::ExpectK,
     str::CStr,
     Error, Module,
 };
