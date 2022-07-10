@@ -36,6 +36,7 @@ module! {
     license: b"GPL v2",
 }
 
+const FAT_NAME_LENGTH: usize = 11;
 // Characters that are undesirable in an MS-DOS file name
 const BAD_CHARS: &[u8] = b"*?<>|\"";
 const BAD_IF_STRICT: &[u8] = b"+=,; ";
@@ -323,7 +324,49 @@ fn fat_set_state(sb: &mut SuperBlock, anumber: usize, anothernumber: usize) {
     unimplemented!()
 }
 
-struct Bs2FatDirEntry; // is this supposed to be a dentry, or an entry of a directory some other way?
+#[repr(C)]
+struct Bs2FatDirEntry {
+    name: [u8; FAT_NAME_LENGTH],
+    /// ATTR_READ_ONLY:    0x01
+    /// ATTR_HIDDEN:       0x02
+    /// ATTR_SYSTEM:       0x04
+    /// ATTR_VOLUME_ID:    0x08
+    /// ATTR_DIRECTORY:    0x10
+    /// ATTR_ARCHIVE:      0x20
+    attributes: u8,
+	reserved: u8,
+    /// Hundredths of a second: 0-199
+    creation_time_centiseconds: u8,
+    /// Binary format: `hhhhhmmmmmmsssss`
+    /// * hour (`h`): 0-23
+    /// * minute (`m`): 0-59
+    /// * second/2 (`s`): 0-29
+    creation_time: u16,
+    /// Binary format: `yyyyyyymmmmddddd`
+    /// * year (`y`): 0-127 ~ 1980-2107
+    /// * month (`m`): 1-12
+    /// * day (`d`): 1-31
+    creation_date: u16,
+    /// Binary format: `yyyyyyymmmmddddd`
+    /// * year (`y`): 0-127 ~ 1980-2107
+    /// * month (`m`): 1-12
+    /// * day (`d`): 1-31
+    access_date: u16,
+	cluster_number_high: u16,
+    /// Binary format: `hhhhhmmmmmmsssss`
+    /// * hour (`h`): 0-23
+    /// * minute (`m`): 0-59
+    /// * second/2 (`s`): 0-29
+    modification_time: u16,
+    /// Binary format: `yyyyyyymmmmddddd`
+    /// * year (`y`): 0-127 ~ 1980-2107
+    /// * month (`m`): 1-12
+    /// * day (`d`): 1-31
+    modification_date: u16,
+    cluster_number_low: u16,
+    /// File size in bytes
+    size: u32,
+}
 
 #[derive(Default)]
 pub struct BS2FatMountOptions {
