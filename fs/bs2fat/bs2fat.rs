@@ -257,16 +257,16 @@ fn init_superblock_and_info(
         Some(inode)
     };
     sb.s_root = {
-        let mut inode = Inode::new(sb).ok_or(Fail(Error::ENOMEM))?;
+        let inode = Inode::new(sb).ok_or(Fail(Error::ENOMEM))?;
         inode.i_ino = FAT_ROOT_INO;
         inode.set_iversion(1);
-        if let Err(e) = fat_read_root(&mut inode) {
+        if let Err(e) = fat_read_root(inode, &info) {
             inode.put();
             return Err(Fail(e));
         }
         inode.insert_hash();
         fat_attach(&mut inode, 0);
-        Dentry::make_root(&mut inode)
+        Dentry::make_root(inode)
             .ok_or_else(|| {
                 pr_err!("get root inode failed");
                 Fail(Error::ENOMEM)
