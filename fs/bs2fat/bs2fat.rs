@@ -229,7 +229,7 @@ fn init_superblock_and_info(
     info.dirty = (bpb.fat16_state & FAT_STATE_DIRTY) as _;
     // FIXME wrapper
     // check that the table doesn't overflow
-    let fat_clusters = calc_fat_clusters(&sb);
+    let fat_clusters = calc_fat_clusters(&info, &sb);
     let total_clusters = total_clusters.min(fat_clusters - FAT_START_ENT as usize);
     if total_clusters > info.max_fats() {
         if !silent {
@@ -310,8 +310,9 @@ fn fat_ent_access_init(sb: &mut SuperBlock) {
     unimplemented!()
 }
 
-fn calc_fat_clusters(sb: &SuperBlock) -> usize {
-    unimplemented!()
+fn calc_fat_clusters(info: &BS2FatSuperInfo, sb: &SuperBlock) -> usize {
+    const BITS_PER_BYTE: usize = 8;
+    info.fat_length as usize * sb.s_blocksize as usize * BITS_PER_BYTE / info.fat_bits as usize
 }
 
 fn fat_read_root(root_inode: &mut Inode) -> Result {
