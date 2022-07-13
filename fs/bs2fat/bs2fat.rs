@@ -316,60 +316,59 @@ fn calc_fat_clusters(info: &BS2FatSuperInfo, sb: &SuperBlock) -> usize {
 }
 
 fn fat_read_root(root_inode: &mut Inode, info: &BS2FatSuperInfo) -> Result {
-/*
+    /*
     // C allocates msdos_inode_info around each inode and accesses more data this way.
     // We don't know yet why. Maybe to save one alloc call for the intended i_private pointer
     // that is supposed to hold this kind of info.
     //
     // C registers alloc_inode for new_inode
-	MSDOS_I(inode)->i_pos = MSDOS_ROOT_INO;
-	inode->i_uid = sbi->options.fs_uid;
-	inode->i_gid = sbi->options.fs_gid;
-	inode_inc_iversion(inode);
-	inode->i_generation = 0;
-	inode->i_mode = fat_make_mode(sbi, ATTR_DIR, S_IRWXUGO);
-	inode->i_op = sbi->dir_ops;
-	inode->i_fop = &fat_dir_operations;
-	if (is_fat32(sbi)) {
-		MSDOS_I(inode)->i_start = sbi->root_cluster;
-		error = fat_calc_dir_size(inode);
-		if (error < 0)
-			return error;
-	} else {
-		MSDOS_I(inode)->i_start = 0;
-		inode->i_size = sbi->dir_entries * sizeof(struct msdos_dir_entry);
-	}
-	inode->i_blocks = ((inode->i_size + (sbi->cluster_size - 1))
-			   & ~((loff_t)sbi->cluster_size - 1)) >> 9;
-	MSDOS_I(inode)->i_logstart = 0;
-	MSDOS_I(inode)->mmu_private = inode->i_size;
+    MSDOS_I(inode)->i_pos = MSDOS_ROOT_INO;
+    inode->i_uid = sbi->options.fs_uid;
+    inode->i_gid = sbi->options.fs_gid;
+    inode_inc_iversion(inode);
+    inode->i_generation = 0;
+    inode->i_mode = fat_make_mode(sbi, ATTR_DIR, S_IRWXUGO);
+    inode->i_op = sbi->dir_ops;
+    inode->i_fop = &fat_dir_operations;
+    if (is_fat32(sbi)) {
+        MSDOS_I(inode)->i_start = sbi->root_cluster;
+        error = fat_calc_dir_size(inode);
+        if (error < 0)
+            return error;
+    } else {
+        MSDOS_I(inode)->i_start = 0;
+        inode->i_size = sbi->dir_entries * sizeof(struct msdos_dir_entry);
+    }
+    inode->i_blocks = ((inode->i_size + (sbi->cluster_size - 1))
+                & ~((loff_t)sbi->cluster_size - 1)) >> 9;
+    MSDOS_I(inode)->i_logstart = 0;
+    MSDOS_I(inode)->mmu_private = inode->i_size;
 
-	fat_save_attrs(inode, ATTR_DIR);
-	inode->i_mtime.tv_sec = inode->i_atime.tv_sec = inode->i_ctime.tv_sec = 0;
-	inode->i_mtime.tv_nsec = inode->i_atime.tv_nsec = inode->i_ctime.tv_nsec = 0;
-	set_nlink(inode, fat_subdirs(inode)+2);
-*/
+    fat_save_attrs(inode, ATTR_DIR);
+    inode->i_mtime.tv_sec = inode->i_atime.tv_sec = inode->i_ctime.tv_sec = 0;
+    inode->i_mtime.tv_nsec = inode->i_atime.tv_nsec = inode->i_ctime.tv_nsec = 0;
+    set_nlink(inode, fat_subdirs(inode)+2);
+    */
     unimplemented!()
 }
 
 fn fat_calc_dir_size(inode: &mut Inode) -> Result {
-/*
+    /*
     struct msdos_sb_info *sbi = MSDOS_SB(inode->i_sb);
-	int ret, fclus, dclus;
+    int ret, fclus, dclus;
 
-	inode->i_size = 0;
-	if MSDOS_I(inode)->i_start == 0 {
+    inode->i_size = 0;
+    if MSDOS_I(inode)->i_start == 0 {
         return Ok(());
     }
 
-	ret = fat_get_cluster(inode, FAT_ENT_EOF, &fclus, &dclus);
-	if (ret < 0)
-		return ret;
-	inode->i_size = (fclus + 1) << sbi->cluster_bits;
-*/
+    ret = fat_get_cluster(inode, FAT_ENT_EOF, &fclus, &dclus);
+    if (ret < 0)
+        return ret;
+    inode->i_size = (fclus + 1) << sbi->cluster_bits;
+    */
     unimplemented!()
 }
-
 
 fn fat_attach(root_inode: &mut Inode, some_number: usize) {
     unimplemented!()
@@ -388,7 +387,7 @@ struct Bs2FatDirEntry {
     /// ATTR_DIRECTORY:    0x10
     /// ATTR_ARCHIVE:      0x20
     attributes: u8,
-	reserved: u8,
+    reserved: u8,
     /// Hundredths of a second: 0-199
     creation_time_centiseconds: u8,
     /// Binary format: `hhhhhmmmmmmsssss`
@@ -406,7 +405,7 @@ struct Bs2FatDirEntry {
     /// * month (`m`): 1-12
     /// * day (`d`): 1-31
     access_date: u16,
-	cluster_number_high: u16,
+    cluster_number_high: u16,
     /// Binary format: `hhhhhmmmmmmsssss`
     /// * hour (`h`): 0-23
     /// * minute (`m`): 0-59
