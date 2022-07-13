@@ -265,7 +265,7 @@ fn init_superblock_and_info(
             return Err(Fail(e));
         }
         inode.insert_hash();
-        fat_attach(&mut inode, 0);
+        fat_attach(inode, 0);
         Dentry::make_root(inode)
             .ok_or_else(|| {
                 pr_err!("get root inode failed");
