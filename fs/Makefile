@@ -70,6 +70,8 @@ obj-$(CONFIG_NETFS_SUPPORT)	+= netfs/
 obj-$(CONFIG_FSCACHE)		+= fscache/
 obj-$(CONFIG_REISERFS_FS)	+= reiserfs/
 obj-$(CONFIG_EXT4_FS)		+= ext4/
+obj-$(CONFIG_BS2_RAMFS)		+= bs2ramfs/
+obj-$(CONFIG_BS2_FAT)		+= bs2fat/
 # We place ext4 before ext2 so that clean ext3 root fs's do NOT mount using the
 # ext2 driver, which doesn't know about journalling!  Explicitly request ext2
 # by giving the rootfstype= parameter.
