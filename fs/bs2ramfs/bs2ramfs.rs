@@ -10,22 +10,24 @@ use kernel::{
     bindings,
     file::{File, Operations, SeekFrom},
     fs::{
-        address_space_operations::AddressSpaceOperations,
-        dentry::Dentry,
-        inode::{Inode, UpdateATime, UpdateCTime, UpdateMTime},
-        inode_operations::InodeOperations,
-        kiocb::Kiocb,
-        libfs_functions::{self, PageSymlinkInodeOperations, SimpleDirOperations},
-        super_block::SuperBlock,
-        super_operations::{Kstatfs, SeqFile, SuperOperations},
-        FileSystemBase, FileSystemType,
+        // address_space_operations::AddressSpaceOperations,
+        DEntry,
+        INode,
+       // inode::{UpdateATime, UpdateCTime, UpdateMTime},
+       // inode_operations::InodeOperations,
+       // kiocb::Kiocb,
+       // libfs_functions::{self, PageSymlinkInodeOperations, SimpleDirOperations},
+        SuperBlock,
+       // super_operations::{Kstatfs, SeqFile, SuperOperations},
+       // FileSystemBase, FileSystemType,
     },
     iov_iter::IovIter,
     mm,
     prelude::*,
     str::CStr,
-    types::{AddressSpace, Dev, Folio, Iattr, Kstat, Page, Path, UserNamespace},
-    Error, Mode, Module,
+    // types::{AddressSpace, Dev, Folio, Iattr, Kstat, Page, Path, UserNamespace},
+    // Error, Mode,
+    Module,
 };
 
 const PAGE_SHIFT: u32 = 12; // x86 (maybe)
@@ -83,7 +85,7 @@ impl FileSystemBase for BS2Ramfs {
         // TODO: investigate if this really has to be set to NULL in case we run out of memory
         sb.s_root = ptr::null_mut();
         sb.s_root = ramfs_get_inode(sb, None, Mode::S_IFDIR | ops.mount_opts.mode, 0)
-            .and_then(Dentry::make_root)
+            .and_then(DEntry::make_root)
             .ok_or(Error::ENOMEM)? as *mut _ as *mut _;
         pr_emerg!("(rust) s_root: {:?}", sb.s_root);
 
@@ -210,15 +212,15 @@ struct Bs2RamfsSuperOps {
 impl SuperOperations for Bs2RamfsSuperOps {
     kernel::declare_super_operations!(statfs, drop_inode, show_options);
 
-    fn drop_inode(&self, inode: &mut Inode) -> Result {
+    fn drop_inode(&self, inode: &mut INode) -> Result {
         libfs_functions::generic_delete_inode(inode)
     }
 
-    fn statfs(&self, root: &mut Dentry, buf: &mut Kstatfs) -> Result {
+    fn statfs(&self, root: &mut DEntry, buf: &mut Kstatfs) -> Result {
         libfs_functions::simple_statfs(root, buf)
     }
 
-    fn show_options(&self, _s: &mut SeqFile, _root: &mut Dentry) -> Result {
+    fn show_options(&self, _s: &mut SeqFile, _root: &mut DEntry) -> Result {
         pr_emerg!("ramfs show options, doing nothing");
         Ok(())
     }
@@ -274,7 +276,7 @@ impl InodeOperations for Bs2RamfsFileInodeOps {
     fn setattr(
         &self,
         mnt_userns: &mut UserNamespace,
-        dentry: &mut Dentry,
+        dentry: &mut DEntry,
         iattr: &mut Iattr,
     ) -> Result {
         libfs_functions::simple_setattr(mnt_userns, dentry, iattr)
@@ -303,8 +305,8 @@ impl InodeOperations for Bs2RamfsDirInodeOps {
     fn create(
         &self,
         mnt_userns: &mut UserNamespace,
-        dir: &mut Inode,
-        dentry: &mut Dentry,
+        dir: &mut INode,
+        dentry: &mut DEntry,
         mode: Mode,
         _excl: bool,
     ) -> Result {
@@ -312,24 +314,24 @@ impl InodeOperations for Bs2RamfsDirInodeOps {
         self.mknod(mnt_userns, dir, dentry, mode | Mode::S_IFREG, 0)
     }
 
-    fn lookup(&self, dir: &mut Inode, dentry: &mut Dentry, flags: c_uint) -> Result<*mut Dentry> {
+    fn lookup(&self, dir: &mut INode, dentry: &mut DEntry, flags: c_uint) -> Result<*mut DEntry> {
         pr_emerg!("enter lookup");
         libfs_functions::simple_lookup(dir, dentry, flags) // niklas: This returns 0, but it does so on main too, so it's not the problem
     }
 
-    fn link(&self, old_dentry: &mut Dentry, dir: &mut Inode, dentry: &mut Dentry) -> Result {
+    fn link(&self, old_dentry: &mut DEntry, dir: &mut INode, dentry: &mut DEntry) -> Result {
         libfs_functions::simple_link(old_dentry, dir, dentry)
     }
 
-    fn unlink(&self, dir: &mut Inode, dentry: &mut Dentry) -> Result {
+    fn unlink(&self, dir: &mut INode, dentry: &mut DEntry) -> Result {
         libfs_functions::simple_unlink(dir, dentry)
     }
 
     fn symlink(
         &self,
         _mnt_userns: &mut UserNamespace,
-        dir: &mut Inode,
-        dentry: &mut Dentry,
+        dir: &mut INode,
+        dentry: &mut DEntry,
         symname: &'static CStr,
     ) -> Result {
         let inode = ramfs_get_inode(
@@ -354,8 +356,8 @@ impl InodeOperations for Bs2RamfsDirInodeOps {
     fn mkdir(
         &self,
         mnt_userns: &mut UserNamespace,
-        dir: &mut Inode,
-        dentry: &mut Dentry,
+        dir: &mut INode,
+        dentry: &mut DEntry,
         mode: Mode,
     ) -> Result {
         pr_emerg!("enter mkdir");
@@ -366,15 +368,15 @@ impl InodeOperations for Bs2RamfsDirInodeOps {
         Ok(())
     }
 
-    fn rmdir(&self, dir: &mut Inode, dentry: &mut Dentry) -> Result {
+    fn rmdir(&self, dir: &mut INode, dentry: &mut DEntry) -> Result {
         libfs_functions::simple_rmdir(dir, dentry)
     }
 
     fn mknod(
         &self,
         _mnt_userns: &mut UserNamespace,
-        dir: &mut Inode,
-        dentry: &mut Dentry,
+        dir: &mut INode,
+        dentry: &mut DEntry,
         mode: Mode,
         dev: Dev,
     ) -> Result {
@@ -396,10 +398,10 @@ impl InodeOperations for Bs2RamfsDirInodeOps {
     fn rename(
         &self,
         mnt_userns: &mut UserNamespace,
-        old_dir: &mut Inode,
-        old_dentry: &mut Dentry,
-        new_dir: &mut Inode,
-        new_dentry: &mut Dentry,
+        old_dir: &mut INode,
+        old_dentry: &mut DEntry,
+        new_dir: &mut INode,
+        new_dentry: &mut DEntry,
         flags: c_uint,
     ) -> Result {
         libfs_functions::simple_rename(mnt_userns, old_dir, old_dentry, new_dir, new_dentry, flags)
@@ -408,12 +410,12 @@ impl InodeOperations for Bs2RamfsDirInodeOps {
 
 pub fn ramfs_get_inode<'a>(
     sb: &'a mut SuperBlock,
-    dir: Option<&'_ mut Inode>,
+    dir: Option<&'_ mut INode>,
     mode: Mode,
     dev: bindings::dev_t,
-) -> Option<&'a mut Inode> {
-    Inode::new(sb).map(|inode| {
-        inode.i_ino = Inode::next_ino() as _;
+) -> Option<&'a mut INode> {
+    INode::new(sb).map(|inode| {
+        inode.i_ino = INode::next_ino() as _;
         inode.init_owner(unsafe { &mut bindings::init_user_ns }, dir, mode);
 
         static A_OPS: Bs2RamfsAOps = Bs2RamfsAOps;
