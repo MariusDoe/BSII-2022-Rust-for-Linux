@@ -5,9 +5,9 @@
 use alloc::boxed::Box;
 use core::{mem, ptr};
 
+use core::ffi::{c_int, c_longlong, c_uint, c_void};
 use kernel::{
     bindings,
-    c_types::*,
     file::{File, Operations, SeekFrom},
     fs::{
         address_space_operations::AddressSpaceOperations,
@@ -43,10 +43,10 @@ extern "C" {
 
 module! {
     type: BS2Ramfs,
-    name: b"bs2ramfs",
-    author: b"Rust for Linux Contributors",
-    description: b"RAMFS",
-    license: b"GPL v2",
+    name: "bs2ramfs",
+    author: "Rust for Linux Contributors",
+    description: "RAMFS",
+    license: "GPL v2",
 }
 
 struct BS2Ramfs;
