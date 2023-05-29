@@ -38,7 +38,7 @@ use kernel::{
 
 const PAGE_SHIFT: u32 = 12; // x86 (maybe)
 const MAX_LFS_FILESIZE: c_longlong = c_longlong::MAX;
-const BS2RAMFS_MAGIC: u64 = 0x858458f6; // ~~one less than~~ ramfs, should not clash with anything (maybe)
+const BS2RAMFS_MAGIC: u32 = 0x858458f6; // ~~one less than~~ ramfs, should not clash with anything (maybe)
 
 extern "C" {
     fn rust_helper_mapping_set_unevictable(mapping: *mut bindings::address_space);
@@ -59,6 +59,35 @@ module! {
 
 struct BS2Ramfs;
 
+impl Type for BS2Ramfs {
+    const NAME: &'static CStr = kernel::c_str!("bs2ramfs_name");
+    const FLAGS: i32 = bindings::FS_USERNS_MOUNT as _;
+    const SUPER_TYPE: Super = Super::Independent;
+
+    fn fill_super(
+        _: (),
+        sb: NewSuperBlock<'_, Self>,
+    ) -> Result<&SuperBlock<Self>> {
+        pr_emerg!("Reached ramfs fill_super impl");
+        let sb = sb.init(
+            (),
+            &SuperParams {
+                magic: BS2RAMFS_MAGIC,
+                ..SuperParams::DEFAULT
+            },
+        )?;
+        let root_inode = sb.try_new_dcache_dir_inode(INodeParams { 
+            mode: (bindings::S_IFDIR | 0o775) as _,
+            ino: 1,
+            value: (),
+        })?;
+        let root = sb.try_new_root_dentry(root_inode)?;
+        let sb = sb.init_root(root)?;
+        pr_emerg!("SB filled");
+        Ok(sb)
+    }
+}
+
 impl FileSystemBase for BS2Ramfs {
     const NAME: &'static CStr = kernel::c_str!("bs2ramfs_name");
     const FS_FLAGS: c_int = bindings::FS_USERNS_MOUNT as _;
@@ -76,34 +105,6 @@ impl FileSystemBase for BS2Ramfs {
     fn kill_super(sb: &mut SuperBlock) {
         let _ = unsafe { Box::from_raw(mem::replace(&mut sb.s_fs_info, ptr::null_mut())) };
         libfs_functions::kill_litter_super(sb);
-    }
-
-    fn fill_super(
-        sb: &mut SuperBlock,
-        _data: Option<&mut Self::MountOptions>,
-        _silent: c_int,
-    ) -> Result {
-        pr_emerg!("Reached ramfs_fill_super_impl");
-
-        sb.s_magic = BS2RAMFS_MAGIC;
-        let ops = Box::try_new(Bs2RamfsSuperOps::default())?;
-
-        // TODO: investigate if this really has to be set to NULL in case we run out of memory
-        sb.s_root = ptr::null_mut();
-        sb.s_root = ramfs_get_inode(sb, None, Mode::S_IFDIR | ops.mount_opts.mode, 0)
-            .and_then(DEntry::make_root)
-            .ok_or(Error::ENOMEM)? as *mut _ as *mut _;
-        pr_emerg!("(rust) s_root: {:?}", sb.s_root);
-
-        let ops = Box::leak(ops);
-        sb.set_super_operations(ops);
-        sb.s_maxbytes = MAX_LFS_FILESIZE;
-        sb.s_blocksize = kernel::PAGE_SIZE as _;
-        sb.s_blocksize_bits = PAGE_SHIFT as _;
-        sb.s_time_gran = 1;
-        pr_emerg!("SB members set");
-
-        Ok(())
     }
 }
 kernel::declare_fs_type!(BS2Ramfs, BS2RAMFS_FS_TYPE);
