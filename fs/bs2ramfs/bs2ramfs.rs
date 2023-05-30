@@ -9,8 +9,9 @@ use core::{
 };
 
 use kernel::{
+    module_fs,
     bindings,
-    file::{File, Operations, SeekFrom},
+    file::{File, SeekFrom},
     fs::{
         // address_space_operations::AddressSpaceOperations,
         DEntry,
@@ -33,7 +34,6 @@ use kernel::{
     str::CStr,
     // types::{AddressSpace, Dev, Folio, Iattr, Kstat, Page, Path, UserNamespace},
     // Error, Mode,
-    Module,
 };
 
 const PAGE_SHIFT: u32 = 12; // x86 (maybe)
@@ -49,7 +49,7 @@ extern "C" {
     static RUST_HELPER_GFP_HIGHUSER: bindings::gfp_t;
 }
 
-module! {
+module_fs! {
     type: BS2Ramfs,
     name: "bs2ramfs",
     author: "Rust for Linux Contributors",
@@ -57,7 +57,9 @@ module! {
     license: "GPL v2",
 }
 
-struct BS2Ramfs;
+struct BS2Ramfs{
+    reg: kernel::fs::Registration
+}
 
 impl Type for BS2Ramfs {
     const NAME: &'static CStr = kernel::c_str!("bs2ramfs_name");
@@ -88,10 +90,9 @@ impl Type for BS2Ramfs {
     }
 }
 
-impl FileSystemBase for BS2Ramfs {
+impl kernel::fs::Type for BS2Ramfs {
     const NAME: &'static CStr = kernel::c_str!("bs2ramfs_name");
-    const FS_FLAGS: c_int = bindings::FS_USERNS_MOUNT as _;
-    const OWNER: *mut bindings::module = ptr::null_mut();
+    const FLAGS: i32 = 0;
 
     fn mount(
         _fs_type: &'_ mut FileSystemType,
@@ -99,27 +100,19 @@ impl FileSystemBase for BS2Ramfs {
         _device_name: &CStr,
         data: Option<&mut Self::MountOptions>,
     ) -> Result<*mut bindings::dentry> {
-        libfs_functions::mount_nodev::<Self>(flags, data)
+        //libfs_functions::mount_nodev::<Self>(flags, data)
     }
 
     fn kill_super(sb: &mut SuperBlock) {
         let _ = unsafe { Box::from_raw(mem::replace(&mut sb.s_fs_info, ptr::null_mut())) };
-        libfs_functions::kill_litter_super(sb);
-    }
-}
-kernel::declare_fs_type!(BS2Ramfs, BS2RAMFS_FS_TYPE);
-
-impl Module for BS2Ramfs {
-    fn init(_name: &'static CStr, _module: &'static ThisModule) -> Result<Self> {
-        pr_emerg!("bs2 ramfs in action");
-        libfs_functions::register_filesystem::<Self>().map(move |_| Self)
+        //libfs_functions::kill_litter_super(sb);
     }
 }
 
-impl Drop for BS2Ramfs {
-    fn drop(&mut self) {
-        let _ = libfs_functions::unregister_filesystem::<Self>();
-        pr_info!("bs2 ramfs out of action");
+impl kernel::Module for BS2Ramfs {
+    fn init(name: &'static CStr, module: &'static ThisModule) -> Result<Self> {
+        let mut bs2ramfs_reg = kernel::fs::Registration::register(name, 0, module)?; // it should unregister itself
+        Ok(BS2Ramfs {reg: bs2ramfs_reg})
     }
 }
 
@@ -138,17 +131,8 @@ impl Default for RamfsMountOpts {
 #[derive(Default)]
 struct Bs2RamfsFileOps;
 
-impl Operations for Bs2RamfsFileOps {
-    kernel::declare_file_operations!(
-        read_iter,
-        write_iter,
-        mmap,
-        fsync,
-        splice_read,
-        splice_write,
-        seek,
-        get_unmapped_area
-    );
+#[vtable] // file.rs 570 OperationsVtable
+impl file::Operations for Bs2RamfsFileOps {
 
     fn open(_context: &(), _file: &File) -> Result<Self::Data> {
         Ok(())
@@ -217,8 +201,6 @@ struct Bs2RamfsSuperOps {
 }
 
 impl SuperOperations for Bs2RamfsSuperOps {
-    kernel::declare_super_operations!(statfs, drop_inode, show_options);
-
     fn drop_inode(&self, inode: &mut INode) -> Result {
         libfs_functions::generic_delete_inode(inode)
     }
@@ -236,8 +218,8 @@ impl SuperOperations for Bs2RamfsSuperOps {
 #[derive(Default)]
 struct Bs2RamfsAOps;
 
+#[vtable]
 impl AddressSpaceOperations for Bs2RamfsAOps {
-    kernel::declare_address_space_operations!(readpage, write_begin, write_end, dirty_folio);
 
     fn readpage(&self, file: &File, page: &mut Page) -> Result {
         libfs_functions::simple_readpage(file, page)
