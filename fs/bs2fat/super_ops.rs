@@ -1,7 +1,7 @@
 use core::ops::{Deref, DerefMut};
 
 use kernel::{
-    bindings,
+    bindings::{self, hlist_head, hlist_node, fatent_operations},
     fs::{inode::Inode, super_block::SuperBlock, super_operations::SuperOperations},
     print::ExpectK,
     sync::Mutex,
@@ -9,6 +9,7 @@ use kernel::{
 
 use crate::{time::SECS_PER_MIN, BS2FatMountOptions, FAT12_MAX_CLUSTERS, FAT16_MAX_CLUSTERS};
 
+const FAT_HASH_SIZE: usize = 1 << 8;
 pub(crate) fn msdos_sb(sb: &mut SuperBlock) -> &mut BS2FatSuperOps {
     // TODO: use own type for this void* field?
     //&*((*sb).s_fs_info as *const T)
@@ -91,6 +92,23 @@ pub(crate) struct BS2FatSuperInfo {
 
     /// fs state before mount
     pub(crate) dirty: u32,
+
+    pub(crate) hashtables: BS2FatSuperHashtables,
+
+    pub(crate) fatent_ops: Option<*const fatent_operations>,
+    pub(crate) fatent_shift: i32,
+    
+}
+
+pub (crate) struct BS2FatSuperHashtables {
+    pub(crate) inode_hashtable: [Option<* mut hlist_node>; FAT_HASH_SIZE],
+    pub(crate) dir_hashtable: [Option<* mut hlist_node>; FAT_HASH_SIZE],
+}
+
+impl Default for BS2FatSuperHashtables {
+    fn default() -> Self {
+        unsafe {core::mem::zeroed()}
+    }
 }
 
 /// Contains mutexes used for implementing the super operations
@@ -99,6 +117,8 @@ pub(crate) struct BS2FatSuperMutex {
     // if users of the guarded values _always_ lock the mutex, we can move the protected value into
     // the Mutex as one would do in Rust
     pub(crate) fat_lock: Mutex<()>,
+    pub(crate) inode_hash_lock: Mutex<()>,
+    pub(crate) dir_hash_lock: Mutex<()>,
     // pub(crate) nfs_build_inode_lock: Mutex<()>, // we don't need that I think
     pub(crate) s_lock: Mutex<()>,
 }
@@ -115,6 +135,8 @@ impl BS2FatSuperMutex {
             Self {
                 fat_lock: Mutex::new(()),
                 s_lock: Mutex::new(()),
+                inode_hash_lock: Mutex::new(()),
+                dir_hash_lock: Mutex::new(()),
             }
         }
     }
