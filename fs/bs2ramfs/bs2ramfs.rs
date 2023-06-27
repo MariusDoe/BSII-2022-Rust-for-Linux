@@ -13,7 +13,7 @@ use kernel::{
     bindings,
     file::{File, SeekFrom},
     fs::{
-        // address_space_operations::AddressSpaceOperations,
+        address_space_operations::AddressSpaceOperations,
         DEntry,
         INode,
         // inode::{UpdateATime, UpdateCTime, UpdateMTime},
@@ -407,8 +407,7 @@ pub fn ramfs_get_inode<'a>(
         inode.i_ino = INode::next_ino() as _;
         inode.init_owner(unsafe { &mut bindings::init_user_ns }, dir, mode);
 
-        static A_OPS: Bs2RamfsAOps = Bs2RamfsAOps;
-        inode.set_address_space_operations(&A_OPS);
+        inode.set_address_space_operations(&file::AddressSpaceOperationsVtable<Bs2RamfsAOps>::build());
 
         // I think these should be functions on the AddressSpace, i.e. sth like inode.get_address_space().set_gfp_mask(...)
         unsafe {

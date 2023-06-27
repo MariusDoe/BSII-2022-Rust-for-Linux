@@ -5,6 +5,8 @@
 //! C headers: [`include/linux/fs.h`](../../../../include/linux/fs.h) and
 //! [`include/linux/file.h`](../../../../include/linux/file.h)
 
+#![allow(missing_docs)]
+
 use crate::{
     bindings,
     cred::Credential,
@@ -911,4 +913,185 @@ pub fn read_from_slice(s: &[u8], writer: &mut impl IoBufferWriter, offset: u64) 
     let len = core::cmp::min(s.len() - offset, writer.len());
     writer.write_slice(&s[offset..][..len])?;
     Ok(len)
+}
+
+
+// here is our stuff
+pub type AddressSpace = bindings::address_space;
+pub type Page = bindings::page;
+pub type Folio = bindings::folio;
+
+#[vtable]
+pub trait AddressSpaceOperations: Send + Sync + Sized + Default {
+    /// The methods to use to populate [`struct adress_space_operations`].
+  
+    fn readpage(&self, _file: &File, _page: &mut Page) -> Result {
+        Err(EINVAL)
+    }
+
+    fn write_begin(
+        &self,
+        _file: Option<&File>,
+        _mapping: &mut AddressSpace,
+        _pos: bindings::loff_t,
+        _len: u32,
+        _pagep: *mut *mut Page,
+        _fsdata: *mut *mut core::ffi::c_void,
+    ) -> Result {
+        Err(EINVAL)
+    }
+
+    fn write_end(
+        &self,
+        _file: Option<&File>,
+        _mapping: &mut AddressSpace,
+        _pos: bindings::loff_t,
+        _len: u32,
+        _copied: u32,
+        _page: &mut Page,
+        _fsdata: *mut core::ffi::c_void,
+    ) -> Result<u32> {
+        Err(EINVAL)
+    }
+
+    fn dirty_folio(&self, _address_space: &mut AddressSpace, _folio: &mut Folio) -> Result<bool> {
+        Err(EINVAL)
+    }
+}
+
+pub struct AddressSpaceOperationsVtable<T>(marker::PhantomData<T>);
+
+impl<T: AddressSpaceOperations> AddressSpaceOperationsVtable<T> {
+
+/// Corresponds to the kernel's `struct adress_space_operations`.
+///
+/// You implement this trait whenever you would create a `struct adress_space_operations`.
+///
+/// File descriptors may be used from multiple threads/processes concurrently, so your type must be
+/// [`Sync`]. It must also be [`Send`] because [`FileOperations::release`] will be called from the
+/// thread that decrements that associated file's refcount to zero.
+    /// The methods to use to populate [`struct adress_space_operations`].
+
+    // fn readpage(&self, _file: &File, _page: &mut Page) -> Result {
+    //     Err(EINVAL)
+    // }
+
+    // fn write_begin(
+    //     &self,
+    //     _file: Option<&File>,
+    //     _mapping: &mut AddressSpace,
+    //     _pos: bindings::loff_t,
+    //     _len: u32,
+    //     _pagep: *mut *mut Page,
+    //     _fsdata: *mut *mut core::ffi::c_void,
+    // ) -> Result {
+    //     Err(EINVAL)
+    // }
+
+    // fn write_end(
+    //     &self,
+    //     _file: Option<&File>,
+    //     _mapping: &mut AddressSpace,
+    //     _pos: bindings::loff_t,
+    //     _len: u32,
+    //     _copied: u32,
+    //     _page: &mut Page,
+    //     _fsdata: *mut core::ffi::c_void,
+    // ) -> Result<u32> {
+    //     Err(EINVAL)
+    // }
+
+    // fn dirty_folio(&self, _address_space: &mut AddressSpace, _folio: &mut Folio) -> Result<bool> {
+    //     Err(EINVAL)
+    // }
+
+    // unsafe extern "C" fn readpage_callback(
+    //     file: *mut bindings::file,
+    //     page: *mut bindings::page,
+    // ) -> core::ffi::c_int {
+    //     unsafe {
+    //         let address_space = (*file).f_mapping;
+    //         let a_ops = &*((*address_space).private_data as *const T);
+    //         from_kernel_result! {
+    //             T::readpage(a_ops, &File::from_ptr(file), &mut (*page)).map(|()| 0)
+    //         }
+    //     }
+    // }
+
+    unsafe extern "C" fn write_begin_callback(
+        file: *mut bindings::file,
+        mapping: *mut bindings::address_space,
+        pos: bindings::loff_t,
+        len: core::ffi::c_uint,
+        pagep: *mut *mut Page,
+        fsdata: *mut *mut core::ffi::c_void,
+    ) -> core::ffi::c_int {
+        unsafe {
+            let a_ops = &*((*mapping).private_data as *const T);
+            let file = (!file.is_null()).then(|| File::from_ptr(file));
+            from_kernel_result! {
+                T::write_begin(a_ops, file.as_deref(), &mut (*mapping), pos, len, pagep, fsdata).map(|()| 0)
+            }
+        }
+    }
+
+    unsafe extern "C" fn write_end_callback(
+        file: *mut bindings::file,
+        mapping: *mut bindings::address_space,
+        pos: bindings::loff_t,
+        len: core::ffi::c_uint,
+        copied: core::ffi::c_uint,
+        page: *mut bindings::page,
+        fsdata: *mut core::ffi::c_void,
+    ) -> core::ffi::c_int {
+        unsafe {
+            let a_ops = &*((*mapping).private_data as *const T);
+            let file = (!file.is_null()).then(|| File::from_ptr(file));
+            from_kernel_result! {
+                    T::write_end(a_ops, file.as_deref(), &mut (*mapping), pos, len, copied, &mut (*page), fsdata).map(|x| x as i32)
+            }
+        }
+    }
+
+    unsafe extern "C" fn dirty_folio_callback(
+        address_space: *mut bindings::address_space,
+        folio: *mut bindings::folio,
+    ) -> bool {
+        unsafe {
+            let a_ops = &*((*address_space).private_data as *const T);
+            T::dirty_folio(a_ops, &mut (*address_space), &mut (*folio)).unwrap_or(false)
+        }
+    }
+
+    const VTABLE: bindings::address_space_operations = bindings::address_space_operations {
+        write_begin: core::prelude::v1::Some(Self::write_begin_callback),
+        write_end: core::prelude::v1::Some(Self::write_end_callback),
+        dirty_folio: core::prelude::v1::Some(Self::dirty_folio_callback),
+
+        writepage: None,
+        writepages: None,
+        readahead: None,
+        bmap: None,
+        invalidate_folio: None,
+        direct_IO: None,
+        launder_folio: None,
+        is_partially_uptodate: None,
+        is_dirty_writeback: None,
+        error_remove_page: None,
+        swap_activate: None,
+        swap_deactivate: None,
+        read_folio: None,
+        release_folio: None,
+        free_folio: None,
+        migrate_folio: None,
+        swap_rw: None,
+    };
+
+    // pub(crate) const unsafe fn vtable(&self) -> &'static bindings::address_space_operations {
+    //     &Self::VTABLE
+    // }
+
+    pub const unsafe fn build() -> &'static bindings::address_space_operations {
+        &Self::VTABLE
+    }
 }
