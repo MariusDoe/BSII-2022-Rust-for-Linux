@@ -1,16 +1,16 @@
 use core::ops::{Deref, DerefMut};
 
 use kernel::{
-    bindings::{self, hlist_head, hlist_node, fatent_operations},
+    bindings::{self, hlist_node, fatent_operations},
     fs::{inode::Inode, super_block::SuperBlock, super_operations::SuperOperations},
     print::ExpectK,
     sync::Mutex,
 };
 
-use crate::{time::SECS_PER_MIN, BS2FatMountOptions, FAT12_MAX_CLUSTERS, FAT16_MAX_CLUSTERS};
+use crate::{time::SECS_PER_MIN, FAT12_MAX_CLUSTERS, FAT16_MAX_CLUSTERS};
 
 const FAT_HASH_SIZE: usize = 1 << 8;
-pub(crate) fn msdos_sb(sb: &mut SuperBlock) -> &mut BS2FatSuperOps {
+pub(crate) fn msdos_sb_mut(sb: &mut SuperBlock) -> &mut BS2FatSuperOps {
     // TODO: use own type for this void* field?
     //&*((*sb).s_fs_info as *const T)
     unsafe {
@@ -19,6 +19,16 @@ pub(crate) fn msdos_sb(sb: &mut SuperBlock) -> &mut BS2FatSuperOps {
             .expectk("msdos_sb in s_fs_info is null!")
     }
 }
+
+pub(crate) fn msdos_sb(sb: &SuperBlock) -> &BS2FatSuperOps {
+
+    unsafe {
+        (sb.s_fs_info as *const BS2FatSuperOps)
+            .as_ref()
+            .expectk("s_fs_info in msdos_sb is null!")
+    }
+}
+
 
 /// The super operations for BS2FAT
 pub(crate) struct BS2FatSuperOps {
@@ -160,15 +170,56 @@ impl BS2FatSuperInfo {
     }
 
     pub(crate) fn timezone_offset(&self) -> i64 {
-        let minutes = if self.options.timezone_set {
+        let minutes = if self.options.tz_set() != 0 {
             -self.options.time_offset
         } else {
             unsafe { bindings::sys_tz }.tz_minuteswest as _
         };
-        minutes * SECS_PER_MIN
+        minutes as i64 * SECS_PER_MIN
     }
 }
 
 impl SuperOperations for BS2FatSuperOps {
     kernel::declare_super_operations!();
+}
+
+
+pub struct BS2FatMountOptions(bindings::fat_mount_options);
+
+impl BS2FatMountOptions {
+    pub(crate) fn new() -> Self {
+        Self(unsafe { core::mem::zeroed() })
+    }
+}
+
+impl Default for BS2FatMountOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Deref for BS2FatMountOptions {
+    type Target = bindings::fat_mount_options;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for BS2FatMountOptions {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl AsRef<BS2FatMountOptions> for bindings::fat_mount_options {
+    fn as_ref(&self) -> &BS2FatMountOptions {
+        unsafe { core::mem::transmute(self) }
+    }
+}
+
+impl AsMut<BS2FatMountOptions> for bindings::fat_mount_options {
+    fn as_mut(&mut self) -> &mut BS2FatMountOptions {
+        unsafe { core::mem::transmute(self) }
+    }
 }

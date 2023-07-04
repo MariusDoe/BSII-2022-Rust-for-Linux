@@ -1,5 +1,15 @@
+#![allow(unreachable_code)]
+#![allow(non_upper_case_globals)]
+#![allow(improper_ctypes)]
+#![allow(unused)]
+
+//cargo docs start here
+
+//! # BS2FAT
+//! Fat implementation for Rust for Linux
+
 use alloc::boxed::Box;
-use core::{borrow::BorrowMut, cmp::Ord, mem, ptr};
+use core::{cmp::Ord, mem, ops::DerefMut, ptr};
 
 use kernel::{
     bindings,
@@ -7,15 +17,14 @@ use kernel::{
     c_types,
     c_types::*,
     fs::{
-        dentry::Dentry, inode::Inode, libfs_functions, super_block::SuperBlock, FileSystemBase,
+        dentry::Dentry, inode::{Inode, BS2InodeInfo}, libfs_functions, super_block::SuperBlock, FileSystemBase,
         FileSystemType,
     },
-    mutex_init,
+    container_of,
     prelude::*,
     print::ExpectK,
     spinlock_init,
     str::CStr,
-    sync::{Mutex, SpinLock},
     Error, Module,
 };
 
@@ -24,6 +33,8 @@ mod file;
 mod inode;
 mod super_ops;
 mod time;
+mod dir_ops;
+mod file_ops;
 
 use bootsector::{fat_read_bpb, BootSector};
 use super_ops::BS2FatSuperOps;
@@ -33,6 +44,7 @@ use crate::{
     inode::{FAT_FSINFO_INO, FAT_ROOT_INO},
     super_ops::BS2FatSuperInfo,
 };
+use core::mem::size_of;
 
 module! {
     type: BS2Fat,
@@ -55,6 +67,8 @@ const FAT_STATE_DIRTY: u8 = 1;
 
 const FAT12_MAX_CLUSTERS: usize = 0xff4;
 const FAT16_MAX_CLUSTERS: usize = 0xfff4;
+
+#[allow(non_camel_case_types)]
 type umode = u16;
 struct BS2Fat;
 
@@ -65,15 +79,22 @@ enum FillSuperErrorKind {
     Fail(Error),
 }
 
-fn fat_make_mode(sbi: &BS2FatSuperInfo, attrs: u8, mode: umode) -> umode {
-    if attrs & ATTR_RO && !((attrs & ATTR_DIR) && !sbi.options.rodir) {
-        mode = mode & !S_IWUGO;
+#[inline]
+#[allow(non_snake_case)]
+fn S_ISDIR(mode: umode) -> bool {
+    (mode & S_IFDIR as u16) == S_IFDIR as u16
+}
+
+
+fn fat_make_mode(sbi: &BS2FatSuperInfo, attrs: u8, mut mode: umode) -> umode {
+    if (attrs & ATTR_RO as u8) as u8 != 0 && (attrs & ATTR_DIR as u8) != 0 && sbi.options.rodir() == 0 {
+        mode = mode & !S_IWUGO as u16;
     }
 
-    if (attrs & ATTR_DIR) {
-        (mode & !sbi.options.fs_dmask) | S_IFDIR
+    if (attrs & ATTR_DIR as u8) != 0 {
+        (mode & !sbi.options.fs_dmask) | S_IFDIR as u16
     } else {
-        (mode & !sbi.options.fs_fmask) | S_IFREG
+        (mode & !sbi.options.fs_fmask) | S_IFREG as u16
     }
 }
 
@@ -177,6 +198,7 @@ fn init_superblock_and_info(
     let bpb = bpb.map_err(|e| if e == Error::EINVAL { Invalid } else { Fail(e) })?;
     let logical_sector_size = bpb.sector_size as u64;
     // FIXME see comment above
+    pr_info!("test");
     (*info).sectors_per_cluster = bpb.sectors_per_cluster as _;
     if logical_sector_size < sb.s_blocksize {
         pr_err!(
@@ -284,6 +306,7 @@ fn init_superblock_and_info(
     pr_info!("got here 1");
     sb.s_root = {
         let inode = Inode::new(sb).ok_or(Fail(Error::ENOMEM))?;
+        
         inode.i_ino = FAT_ROOT_INO;
         inode.set_iversion(1);
         if let Err(e) = fat_read_root(inode, &ops.info) {
@@ -417,6 +440,8 @@ extern "C" {
 
     fn fat32_ent_next(arg1: *mut fat_entry) -> c_types::c_int;
 }
+
+
 static fat12_ops: fatent_operations = fatent_operations {
     ent_blocknr: Some(fat12_ent_blocknr),
     ent_set_ptr: Some(fat12_ent_set_ptr),
@@ -489,7 +514,15 @@ fn calc_fat_clusters(info: &BS2FatSuperInfo, sb: &SuperBlock) -> usize {
     info.fat_length as usize * sb.s_blocksize as usize * BITS_PER_BYTE / info.fat_bits as usize
 }
 
-fn fat_read_root(root_inode: &mut Inode, info: &mut BS2FatSuperInfo) -> Result {
+
+#[inline]
+#[allow(non_snake_case)]
+fn MSDOS_I(inode: &mut Inode) -> &mut BS2InodeInfo {
+    unsafe {
+        (container_of!(inode, bindings::msdos_inode_info, vfs_inode) as *mut bindings::msdos_inode_info).as_mut().map(AsMut::as_mut).expectk("null inode_info pointer (should never happen)")
+    }}
+
+fn fat_read_root(root_inode: &mut Inode, sbi: &BS2FatSuperInfo) -> Result {
     /*
     // C allocates msdos_inode_info around each inode and accesses more data this way.
     // We don't know yet why. Maybe to save one alloc call for the intended i_private pointer
@@ -524,34 +557,109 @@ fn fat_read_root(root_inode: &mut Inode, info: &mut BS2FatSuperInfo) -> Result {
     set_nlink(inode, fat_subdirs(inode)+2);
     */
 
-    let sbi = root_inode.super_block_mut().info;
-    info.i_pos = MSDOS_ROOT_INO;
-    inode.i_uid = sbi.options.fs_uid;
-    inode.i_gid = sbi.options.fs_gid;
-    inode.set_iversion(inode.i_version + 1);
-    inode.i_generation = 0;
-    inode.i_mode = fat_make_mode(sbi, ATTR_DIR as u8, S_IRWXUGO);
-    inode.i_op = sbi.dir_ops;
-    inode.i_fop = &fat_dir_operations;
+    pr_info!("check 1");
+    MSDOS_I(root_inode).i_pos = MSDOS_ROOT_INO as i64;
+    root_inode.i_uid = sbi.options.fs_uid;
+    root_inode.i_gid = sbi.options.fs_gid;
+    root_inode.inc_iversion();
+    root_inode.i_generation = 0;
+    root_inode.i_mode = fat_make_mode(sbi, ATTR_DIR as u8, S_IRWXUGO as u16);
+    root_inode.set_inode_operations(&crate::dir_ops::BS2FatDirInodeOps);
+    //root_inode.set_file_operations::<crate::dir_ops::BS2FatDirOps>();
+
+    pr_info!("check 2");
+    
     if is_fat32(sbi) {
-        info.i_start = sbi.root_cluster;
-        fat_calc_dir_size(inode)?;
+        pr_info!("check 2.1");
+        MSDOS_I(root_inode).i_start = sbi.root_cluster as i32;
+        fat_calc_dir_size(root_inode)?;
     } else {
-        info.i_Start = 0;
-        inode.i_size = sbi.dir_entries * size_of<msdos_dir_entry>();
+        pr_info!("check 2.2");
+        MSDOS_I(root_inode).i_start = 0;
+        root_inode.i_size = sbi.dir_entries as i64 * size_of::<msdos_dir_entry>() as i64;
     }
-    inode.i_blocks = ((inode.i_size + (sbi.cluster_size - 1))
-    & !(sbi.cluster_size as loff_t - 1)) >> 9;
-    info.i_logstart = 0;
-    info.mmu_private = inode.i_size;
-    fat_save_attrs(inode, ATTR_DIR as u8);
-    inode.i_mtime.tv_sec = 0;
-    inode.i_atime.tv_sec = 0;
-    inode.i_ctive.tv_sec = 0;
-    inode.i_mtime.tv_nsec = 0;
-    inode.i_atime.tv_nsec = 0;
-    inode.i_ctive.tv_nsec = 0;
-    unsafe {set_nlink(inode, fat_subdirs(inode)+2) as u32;}
+    pr_info!("{x:?}", x = root_inode.as_ptr());
+    root_inode.i_blocks =
+        ((root_inode.i_size as u64 + (sbi.cluster_size - 1) as u64) as u64 & !(sbi.cluster_size as loff_t - 1) as u64) >> 9;
+    MSDOS_I(root_inode).i_logstart = 0;
+    MSDOS_I(root_inode).mmu_private = root_inode.i_size;
+    fat_save_attrs(root_inode, ATTR_DIR as u8, sbi);
+    pr_info!("check 7");
+    root_inode.i_mtime.tv_sec = 0;
+    root_inode.i_atime.tv_sec = 0;
+    root_inode.i_ctime.tv_sec = 0;
+    root_inode.i_mtime.tv_nsec = 0;
+    root_inode.i_atime.tv_nsec = 0;
+    root_inode.i_ctime.tv_nsec = 0;
+    root_inode.i_sb = sbi as *const _ as *mut _;
+    use kernel::bindings::inode;
+    let root_inode = root_inode.as_ptr_mut();
+    unsafe {
+        set_nlink(
+            root_inode,
+            fat_subdirs(root_inode, sbi) as u32 + 2,
+        );
+    }
+    pr_info!("check 8");
+    return Ok(());
+}
+
+fn fat_subdirs(dir: &mut Inode, sbi: &BS2FatSuperInfo) -> i32 {
+    /*
+    struct buffer_head *bh;
+	struct msdos_dir_entry *de;
+	loff_t cpos;
+	int count = 0;
+
+	bh = NULL;
+	cpos = 0;
+	while (fat_get_short_entry(dir, &cpos, &bh, &de) >= 0) {
+		if (de->attr & ATTR_DIR)
+			count++;
+	}
+	brelse(bh);
+	return count;
+    */
+
+    let mut bh: Option<BufferHead> = None;
+    let mut msdos_dir_entry: Option<Bs2FatDirEntry> = None;
+    let mut cpos = 0;
+    let count = 0;
+    while fat_get_short_entry(dir, cpos, &mut bh, &mut de) >= 0 {
+        if de.unwrap().attr & ATTR_DIR {
+            count += 1;
+        }
+    }
+    todo!("brelse");
+    rust_helper_brelse(bh.unwrap());
+    return count;
+    
+    
+    unimplemented!()
+}
+
+#[inline]
+#[allow(non_snake_case)]
+fn IS_FREE(name: Option<Box<[u8; FAT_NAME_LENGTH]>>) -> bool {
+    if let Some(name) = name {
+        return name[0] == 0xE5;
+    }
+    return true;
+}
+
+fn fat_get_short_entry(dir: &Inode, pos: &mut i64, bh: &mut Option<BufferHead>, de: &mut Option<Bs2FatDirEntry>) -> Result<()> {
+    while fat_get_entry(dir, pos, bh, de).is_ok() {
+        if !IS_FREE(de.unwrap().name) && !de.unwrap().attributes & ATTR_VOLUME {
+            return Ok(())
+        }
+    }
+    return Err(Error::ENOENT);
+}
+
+fn fat_get_entry(dir: &Inode, pos: &mut i64, bh: &mut Option<BufferHead>, de: &mut Option<Bs2FatDirEntry>) -> Result<()> {
+    if let (Some(bh), Some(de)) = (bh, de) {
+
+    }
 }
 
 fn fat_calc_dir_size(inode: &mut Inode) -> Result {
@@ -572,123 +680,112 @@ fn fat_calc_dir_size(inode: &mut Inode) -> Result {
     unimplemented!()
 }
 
-fn fat_save_attrs(info: &mut BS2FatSuperInfo, attrs: u8)
-{
-	if (fat_mode_can_hold_ro(inode)) {
-		info.i_attrs = attrs & ATTR_UNUSED;
+fn fat_save_attrs(inode: &mut Inode, attrs: u8, sbi: &BS2FatSuperInfo) {
+    MSDOS_I(inode).i_attrs =
+    if fat_mode_can_hold_ro(inode, sbi) {
+        attrs as i32 & ATTR_UNUSED as i32
     } else {
-		info.i_attrs = attrs & (ATTR_UNUSED | ATTR_RO) };
+        attrs as i32 & (ATTR_UNUSED as i32 | ATTR_RO as i32)
+    };
 }
 
+fn fat_mode_can_hold_ro(inode: &Inode, sbi: &BS2FatSuperInfo) -> bool {
+    let mask: umode;
 
-fn fat_mode_can_hold_ro(inode: &Inode) -> bool
-{
-    use super_ops::msdos_sb;
-    let sbi = msdos_sb(inode.i_sb).info;
-	
-	let mut mask: umode;
-
-	if (S_ISDIR(inode.i_mode)) {
-		if (!sbi.options.rodir) {
-			return false;
+    if S_ISDIR(inode.i_mode) {
+        if sbi.options.rodir() == 0 {
+            return false;
         }
-		mask = !sbi.options.fs_dmask;
-	} else {
-		mask = !sbi.options.fs_fmask;
+        mask = !sbi.options.fs_dmask;
+    } else {
+        mask = !sbi.options.fs_fmask;
     }
 
-	if (!(mask & S_IWUGO)) {
-        false
-    } else {
-        true
-    }
+    (mask as u32 & S_IWUGO) != 0
 }
 
 fn fat_attach(root_inode: &mut Inode, some_number: usize) {
-
     /*
     struct msdos_sb_info *sbi = MSDOS_SB(inode->i_sb);
 
-	if (inode->i_ino != MSDOS_ROOT_INO) {
-		struct hlist_head *head =   sbi->inode_hashtable
-					  + fat_hash(i_pos);
+    if (inode->i_ino != MSDOS_ROOT_INO) {
+        struct hlist_head *head =   sbi->inode_hashtable
+                      + fat_hash(i_pos);
 
-		spin_lock(&sbi->inode_hash_lock);
-		MSDOS_I(inode)->i_pos = i_pos;
-		hlist_add_head(&MSDOS_I(inode)->i_fat_hash, head);
-		spin_unlock(&sbi->inode_hash_lock);
-	}
+        spin_lock(&sbi->inode_hash_lock);
+        MSDOS_I(inode)->i_pos = i_pos;
+        hlist_add_head(&MSDOS_I(inode)->i_fat_hash, head);
+        spin_unlock(&sbi->inode_hash_lock);
+    }
 
-	/* If NFS support is enabled, cache the mapping of start cluster
-	 * to directory inode. This is used during reconnection of
-	 * dentries to the filesystem root.
-	 */
-	if (S_ISDIR(inode->i_mode) && sbi->options.nfs) {
-		struct hlist_head *d_head = sbi->dir_hashtable;
-		d_head += fat_dir_hash(MSDOS_I(inode)->i_logstart);
+    /* If NFS support is enabled, cache the mapping of start cluster
+     * to directory inode. This is used during reconnection of
+     * dentries to the filesystem root.
+     */
+    if (S_ISDIR(inode->i_mode) && sbi->options.nfs) {
+        struct hlist_head *d_head = sbi->dir_hashtable;
+        d_head += fat_dir_hash(MSDOS_I(inode)->i_logstart);
 
-		spin_lock(&sbi->dir_hash_lock);
-		hlist_add_head(&MSDOS_I(inode)->i_dir_hash, d_head);
-		spin_unlock(&sbi->dir_hash_lock);
-	}
+        spin_lock(&sbi->dir_hash_lock);
+        hlist_add_head(&MSDOS_I(inode)->i_dir_hash, d_head);
+        spin_unlock(&sbi->dir_hash_lock);
+    }
     */
-    
+
     unimplemented!()
 }
 fn fat_set_state(sb: &mut SuperBlock, anumber: usize, anothernumber: usize) {
-    
     /*
     struct buffer_head *bh;
-	struct fat_boot_sector *b;
-	struct msdos_sb_info *sbi = MSDOS_SB(sb);
+    struct fat_boot_sector *b;
+    struct msdos_sb_info *sbi = MSDOS_SB(sb);
 
-	/* do not change any thing if mounted read only */
-	if (sb_rdonly(sb) && !force)
-		return;
+    /* do not change any thing if mounted read only */
+    if (sb_rdonly(sb) && !force)
+        return;
 
-	/* do not change state if fs was dirty */
-	if (sbi->dirty) {
-		/* warn only on set (mount). */
-		if (set)
-			fat_msg(sb, KERN_WARNING, "Volume was not properly "
-				"unmounted. Some data may be corrupt. "
-				"Please run fsck.");
-		return;
-	}
+    /* do not change state if fs was dirty */
+    if (sbi->dirty) {
+        /* warn only on set (mount). */
+        if (set)
+            fat_msg(sb, KERN_WARNING, "Volume was not properly "
+                "unmounted. Some data may be corrupt. "
+                "Please run fsck.");
+        return;
+    }
 
-	bh = sb_bread(sb, 0);
-	if (bh == NULL) {
-		fat_msg(sb, KERN_ERR, "unable to read boot sector "
-			"to mark fs as dirty");
-		return;
-	}
+    bh = sb_bread(sb, 0);
+    if (bh == NULL) {
+        fat_msg(sb, KERN_ERR, "unable to read boot sector "
+            "to mark fs as dirty");
+        return;
+    }
 
-	b = (struct fat_boot_sector *) bh->b_data;
+    b = (struct fat_boot_sector *) bh->b_data;
 
-	if (is_fat32(sbi)) {
-		if (set)
-			b->fat32.state |= FAT_STATE_DIRTY;
-		else
-			b->fat32.state &= ~FAT_STATE_DIRTY;
-	} else /* fat 16 and 12 */ {
-		if (set)
-			b->fat16.state |= FAT_STATE_DIRTY;
-		else
-			b->fat16.state &= ~FAT_STATE_DIRTY;
-	}
+    if (is_fat32(sbi)) {
+        if (set)
+            b->fat32.state |= FAT_STATE_DIRTY;
+        else
+            b->fat32.state &= ~FAT_STATE_DIRTY;
+    } else /* fat 16 and 12 */ {
+        if (set)
+            b->fat16.state |= FAT_STATE_DIRTY;
+        else
+            b->fat16.state &= ~FAT_STATE_DIRTY;
+    }
 
-	mark_buffer_dirty(bh);
-	sync_dirty_buffer(bh);
-	brelse(bh);
+    mark_buffer_dirty(bh);
+    sync_dirty_buffer(bh);
+    brelse(bh);
     */
-    
-    
+
     unimplemented!()
 }
 
 #[repr(C)]
 struct Bs2FatDirEntry {
-    name: [u8; FAT_NAME_LENGTH],
+    name: Option<Box<[u8; FAT_NAME_LENGTH]>>,
     /// ATTR_READ_ONLY:    0x01
     /// ATTR_HIDDEN:       0x02
     /// ATTR_SYSTEM:       0x04
@@ -728,13 +825,6 @@ struct Bs2FatDirEntry {
     cluster_number_low: u16,
     /// File size in bytes
     size: u32,
-}
-
-#[derive(Default)]
-pub struct BS2FatMountOptions {
-    timezone_set: bool,
-    time_offset: i64,
-    flush: bool,
 }
 
 // fn fat_alloc_clusters(inode: &mut Inode, cluster: &mut Cluster, nr_cluster: u32)

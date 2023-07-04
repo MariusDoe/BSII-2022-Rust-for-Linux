@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 use kernel::{bindings, file::TimeFlags, fs::inode::Inode};
 
 use crate::{

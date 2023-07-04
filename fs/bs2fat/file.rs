@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 use core::ops::DerefMut;
 
 use kernel::{
@@ -8,7 +9,7 @@ use kernel::{
     iov_iter::IovIter,
     mm::virt::Area,
     prelude::*,
-    Error, Result,
+    Error, Result, print::ExpectK,
 };
 
 use crate::{
@@ -45,8 +46,8 @@ impl Operations for BS2FatFileOps {
     fn release(_data: Self::Data, file: &File) {
         // Assumption: Inode stems from file (! please verify); TODO:
         let inode: &mut Inode = file.inode();
-        if file.fmode().has(FMode::FMODE_WRITE) && msdos_sb(inode.super_block_mut()).options.flush {
-            fat_flush_inodes(inode.super_block_mut(), Some(inode), None);
+        if file.fmode().has(FMode::FMODE_WRITE) && msdos_sb(inode.super_block_mut()).options.flush() != 0 {
+            fat_flush_inodes(inode.super_block_mut(), Some(inode), None).expectk("error flush inodes");
             unsafe { bindings::io_schedule_timeout(RUST_HELPER_HZ / 10) };
         }
     }

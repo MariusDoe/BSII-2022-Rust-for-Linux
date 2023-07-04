@@ -1,3 +1,5 @@
+#![allow(unused_unsafe)]
+
 use core::ops::{Deref, DerefMut};
 use core::{mem, ptr};
 
@@ -19,6 +21,7 @@ extern "C" {
     fn rust_helper_i_size_read(inode: *const bindings::inode) -> bindings::loff_t;
     fn rust_helper_insert_inode_hash(inode: *mut bindings::inode);
     fn rust_helper_inode_set_iversion(inode: *mut bindings::inode, value: u64);
+    fn rust_helper_inode_inc_iversion(inode: *mut bindings::inode);
 }
 
 #[derive(PartialEq, Eq)]
@@ -43,6 +46,9 @@ pub enum WriteSync {
 }
 
 #[repr(transparent)]
+pub struct BS2InodeInfo(bindings::msdos_inode_info);
+
+#[repr(transparent)]
 pub struct Inode(bindings::inode);
 
 impl Inode {
@@ -56,9 +62,26 @@ impl Inode {
 
     pub fn new(sb: &mut SuperBlock) -> Option<&mut Self> {
         unsafe {
-            bindings::new_inode(sb.as_ptr_mut())
+            let mut inode = bindings::new_inode(sb.as_ptr_mut())
                 .as_mut()
-                .map(AsMut::as_mut)
+                .map(AsMut::as_mut);
+            if let Some(inode) = inode.as_mut() {
+                inode.i_private = crate::container_of!(inode, bindings::msdos_inode_info, vfs_inode) as *mut _;
+
+            }
+            
+            
+            
+            inode
+        }
+    }
+
+    pub fn get_info(&mut self) -> Option<&mut BS2InodeInfo> {
+        unsafe { 
+            (self.i_private as *mut bindings::msdos_inode_info)
+            .as_mut()
+            .map(AsMut::as_mut)
+        
         }
     }
 
@@ -205,6 +228,18 @@ impl Inode {
             rust_helper_inode_set_iversion(self.as_ptr_mut(), value);
         }
     }
+
+    pub fn inc_iversion(&mut self) {
+        unsafe {
+            rust_helper_inode_inc_iversion(self.as_ptr_mut());
+        }
+    }
+    
+    pub fn set_i_fop (&mut self, value: *const bindings::file_operations) {
+        unsafe {
+            self.0.__bindgen_anon_3.i_fop = value;
+        }
+    }
 }
 
 pub struct LockGuard<'a> {
@@ -247,6 +282,7 @@ impl Deref for Inode {
         &self.0
     }
 }
+
 impl DerefMut for Inode {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
@@ -260,5 +296,31 @@ impl AsRef<Inode> for bindings::inode {
 impl AsMut<Inode> for bindings::inode {
     fn as_mut(&mut self) -> &mut Inode {
         unsafe { mem::transmute(self) }
+    }
+}
+
+impl AsRef<BS2InodeInfo> for bindings::msdos_inode_info {
+    fn as_ref(&self) -> &BS2InodeInfo {
+        unsafe { mem::transmute(self) }
+    }
+}
+
+impl AsMut<BS2InodeInfo> for bindings::msdos_inode_info {
+    fn as_mut(&mut self) -> &mut BS2InodeInfo {
+        unsafe { mem::transmute(self) }
+    }
+}
+
+impl Deref for BS2InodeInfo {
+    type Target = bindings::msdos_inode_info;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for BS2InodeInfo {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }

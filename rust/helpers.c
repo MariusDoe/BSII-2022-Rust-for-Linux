@@ -765,3 +765,10 @@ static_assert(__builtin_types_compatible_p(size_t, uintptr_t),
 
 const long RUST_HELPER_HZ = HZ;
 EXPORT_SYMBOL_GPL(RUST_HELPER_HZ);
+
+inline void rust_helper_inode_inc_iversion(struct inode *inode)
+{
+	inode_inc_iversion(inode);
+}
+
+EXPORT_SYMBOL_GPL(rust_helper_inode_inc_iversion);

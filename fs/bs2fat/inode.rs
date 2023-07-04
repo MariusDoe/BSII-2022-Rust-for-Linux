@@ -61,7 +61,7 @@ pub(crate) fn fat_flush_inodes(
     i1: Option<&mut Inode>,
     i2: Option<&mut Inode>,
 ) -> Result {
-    if !msdos_sb(sb).options.flush {
+    if msdos_sb(sb).options.flush() != 0 {
         return Ok(());
     }
     writeback_inode(i1.ok_or(Error::EINVAL)?)?;
