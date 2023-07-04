@@ -662,22 +662,25 @@ fn fat_get_entry(dir: &Inode, pos: &mut i64, bh: &mut Option<BufferHead>, de: &m
     }
 }
 
-fn fat_calc_dir_size(inode: &mut Inode) -> Result {
-    /*
-    struct msdos_sb_info *sbi = MSDOS_SB(inode->i_sb);
-    int ret, fclus, dclus;
+fn fat_calc_dir_size(inode: &mut Inode, info: &mut BS2FatSuperInfo) -> Result {
+    let sbi = inode.super_block_mut().s_fs_info;
+    inode.i_size = 0;
 
-    inode->i_size = 0;
-    if MSDOS_I(inode)->i_start == 0 {
+    let (mut ret, mut fclus, mut dclus) = (0,0,0);
+    
+    if info.i_start == 0 {
         return Ok(());
     }
-
-    ret = fat_get_cluster(inode, FAT_ENT_EOF, &fclus, &dclus);
-    if (ret < 0)
-        return ret;
-    inode->i_size = (fclus + 1) << sbi->cluster_bits;
-    */
-    unimplemented!()
+    
+    ret = unsafe { fat_get_cluster(inode, FAT_ENT_EOF as i32, &mut fclus, &mut dclus) };
+ 
+    if ret < 0 {
+        return Err((ret));
+    }
+    
+    inode.i_size = (fclus + 1) << sbi.cluster_bits;
+    
+    return Ok(());
 }
 
 fn fat_save_attrs(inode: &mut Inode, attrs: u8, sbi: &BS2FatSuperInfo) {
@@ -731,6 +734,12 @@ fn fat_attach(root_inode: &mut Inode, some_number: usize) {
         spin_unlock(&sbi->dir_hash_lock);
     }
     */
+
+    let sbi = inode.super_block_mut().s_fs_info;
+    
+    if inode.i_info != MSDOS_ROOT_INO {
+        sbi.inode_hashtable
+    }
 
     unimplemented!()
 }
@@ -825,7 +834,6 @@ struct Bs2FatDirEntry {
     cluster_number_low: u16,
     /// File size in bytes
     size: u32,
-}
 
 // fn fat_alloc_clusters(inode: &mut Inode, cluster: &mut Cluster, nr_cluster: u32)
 // {
