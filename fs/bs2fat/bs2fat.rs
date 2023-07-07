@@ -25,7 +25,7 @@ use kernel::{
     print::ExpectK,
     spinlock_init,
     str::CStr,
-    Error, Module,
+    Error, Module, sync::Lock,
 };
 
 mod bootsector;
@@ -662,13 +662,13 @@ fn fat_get_entry(dir: &Inode, pos: &mut i64, bh: &mut Option<BufferHead>, de: &m
     }
 }
 
-fn fat_calc_dir_size(inode: &mut Inode, info: &mut BS2FatSuperInfo) -> Result {
-    let sbi = inode.super_block_mut().s_fs_info;
+fn fat_calc_dir_size(inode: &mut Inode) -> Result {
+    let sbi: BS2FatSuperInfo = inode.super_block_mut().s_fs_info;
     inode.i_size = 0;
 
     let (mut ret, mut fclus, mut dclus) = (0,0,0);
     
-    if info.i_start == 0 {
+    if MSDOS_I(info).i_start == 0 {
         return Ok(());
     }
     
@@ -707,42 +707,63 @@ fn fat_mode_can_hold_ro(inode: &Inode, sbi: &BS2FatSuperInfo) -> bool {
     (mask as u32 & S_IWUGO) != 0
 }
 
-fn fat_attach(root_inode: &mut Inode, some_number: usize) {
-    /*
-    struct msdos_sb_info *sbi = MSDOS_SB(inode->i_sb);
+fn fat_hash(i_pos: usize) -> u32 {
+    let i_pos = i_pos as u32; 
+    let (v,_) = i_pos.overflowing_mul(GOLDEN_RATIO_32);
+    return v.overflowing_shr(32-FAT_HASH_BITS).0;
+}
 
-    if (inode->i_ino != MSDOS_ROOT_INO) {
-        struct hlist_head *head =   sbi->inode_hashtable
-                      + fat_hash(i_pos);
+fn fat_attach(inode: &mut Inode, i_pos: usize) {
+    //     define __WRITE_ONCE(x, val)						\
+    // do {									\
+    // 	*(volatile typeof(x) *)&(x) = (val);				\
+    // } while (0)
 
-        spin_lock(&sbi->inode_hash_lock);
-        MSDOS_I(inode)->i_pos = i_pos;
-        hlist_add_head(&MSDOS_I(inode)->i_fat_hash, head);
-        spin_unlock(&sbi->inode_hash_lock);
-    }
-
-    /* If NFS support is enabled, cache the mapping of start cluster
-     * to directory inode. This is used during reconnection of
-     * dentries to the filesystem root.
-     */
-    if (S_ISDIR(inode->i_mode) && sbi->options.nfs) {
-        struct hlist_head *d_head = sbi->dir_hashtable;
-        d_head += fat_dir_hash(MSDOS_I(inode)->i_logstart);
-
-        spin_lock(&sbi->dir_hash_lock);
-        hlist_add_head(&MSDOS_I(inode)->i_dir_hash, d_head);
-        spin_unlock(&sbi->dir_hash_lock);
-    }
-    */
-
-    let sbi = inode.super_block_mut().s_fs_info;
+    // #define WRITE_ONCE(x, val)						\
+    // do {									\
+    // 	compiletime_assert_rwonce_type(x);				\
+    // 	__WRITE_ONCE(x, val);						\
+    // } while (0)
+    // static inline void hlist_add_head(struct hlist_node *n, struct hlist_head *h)
+    // {
+    //     struct hlist_node *first = h->first;
+    //     WRITE_ONCE(n->next, first);
+    //     if (first)
+    //         WRITE_ONCE(first->pprev, &n->next);
+    //     WRITE_ONCE(h->first, n);
+    //     WRITE_ONCE(n->pprev, &h->first);
+    // }
+    let sbi: BS2FatSuperInfo = inode.super_block_mut().s_fs_info;
     
     if inode.i_info != MSDOS_ROOT_INO {
-        sbi.inode_hashtable
+        let p = sbi.hashtables.inode_hashtable.as_ptr() as u64;
+        let head_p: u64 = p + fat_hash(i_pos) as u64;
+        let head: *mut hlist_head = unsafe{ mem::transmute(head) };
+
+        sbi.inode_hash_lock.lock();
+        MSDOS_I(inode).i_pos = i_pos;
+
+        // TODO: hlist_add_head(&MSDOS_I(inode)->i_fat_hash, head);
+
+        sbi.inode_hash_lock.unlock();
     }
 
+    // /* If NFS support is enabled, cache the mapping of start cluster
+    // * to directory inode. This is used during reconnection of
+    // * dentries to the filesystem root.
+    // */
+    // if (S_ISDIR(inode->i_mode) && sbi->options.nfs) {
+    //     struct hlist_head *d_head = sbi->dir_hashtable;
+    //     d_head += fat_dir_hash(MSDOS_I(inode)->i_logstart);
+
+    //     spin_lock(&sbi->dir_hash_lock);
+    //     hlist_add_head(&MSDOS_I(inode)->i_dir_hash, d_head);
+    //     spin_unlock(&sbi->dir_hash_lock);
+    // }
+
     unimplemented!()
-}
+} //EXPORT_SYMBOL_GPL(fat_attach); not sure what this is
+
 fn fat_set_state(sb: &mut SuperBlock, anumber: usize, anothernumber: usize) {
     /*
     struct buffer_head *bh;
