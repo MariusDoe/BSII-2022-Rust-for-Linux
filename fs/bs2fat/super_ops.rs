@@ -1,7 +1,7 @@
 use core::ops::{Deref, DerefMut};
 
 use kernel::{
-    bindings::{self, hlist_node, fatent_operations},
+    bindings::{self, hlist_node, hlist_head, fatent_operations},
     fs::{inode::Inode, super_block::SuperBlock, super_operations::SuperOperations},
     print::ExpectK,
     sync::Mutex,
@@ -111,8 +111,8 @@ pub(crate) struct BS2FatSuperInfo {
 }
 
 pub (crate) struct BS2FatSuperHashtables {
-    pub(crate) inode_hashtable: [Option<* mut hlist_node>; FAT_HASH_SIZE],
-    pub(crate) dir_hashtable: [Option<* mut hlist_node>; FAT_HASH_SIZE],
+    pub(crate) inode_hashtable: [Option<* mut hlist_head>; FAT_HASH_SIZE],
+    pub(crate) dir_hashtable: [Option<* mut hlist_head>; FAT_HASH_SIZE],
 }
 
 impl Default for BS2FatSuperHashtables {
