@@ -714,40 +714,28 @@ fn fat_hash(i_pos: usize) -> u32 {
 }
 
 fn fat_attach(inode: &mut Inode, i_pos: usize) {
-    //     define __WRITE_ONCE(x, val)						\
-    // do {									\
-    // 	*(volatile typeof(x) *)&(x) = (val);				\
-    // } while (0)
-
-    // #define WRITE_ONCE(x, val)						\
-    // do {									\
-    // 	compiletime_assert_rwonce_type(x);				\
-    // 	__WRITE_ONCE(x, val);						\
-    // } while (0)
-    // static inline void hlist_add_head(struct hlist_node *n, struct hlist_head *h)
-    // {
-    //     struct hlist_node *first = h->first;
-    //     WRITE_ONCE(n->next, first);
-    //     if (first)
-    //         WRITE_ONCE(first->pprev, &n->next);
-    //     WRITE_ONCE(h->first, n);
-    //     WRITE_ONCE(n->pprev, &h->first);
-    // }
     let sbi: BS2FatSuperInfo = inode.super_block_mut().s_fs_info;
     
     if inode.i_info != MSDOS_ROOT_INO {
-        let p = sbi.hashtables.inode_hashtable.as_ptr() as u64;
-        let head_p: u64 = p + fat_hash(i_pos) as u64;
-        let head: *mut hlist_head = unsafe{ mem::transmute(head) };
+        let index = fat_hash(i_pos);
 
         sbi.inode_hash_lock.lock();
+
         MSDOS_I(inode).i_pos = i_pos;
 
-        // TODO: hlist_add_head(&MSDOS_I(inode)->i_fat_hash, head);
+        let head = sbi.hashtables.inode_hashtable[index].unwrap_or_else(|| {
+            let new_instance = Box::new(hlist_head{});
+            let raw_ptr = Box::into_raw(new_instance);
+            inode_hashtable[i] = Some(raw_ptr);
+            raw_ptr
+        });
+
+        libfs_functions::hlist_add_head(MSDOS_I(inode).i_fat_hash, head);
 
         sbi.inode_hash_lock.unlock();
     }
-
+    
+    // TODO: NFS support still missing
     // /* If NFS support is enabled, cache the mapping of start cluster
     // * to directory inode. This is used during reconnection of
     // * dentries to the filesystem root.
@@ -761,7 +749,7 @@ fn fat_attach(inode: &mut Inode, i_pos: usize) {
     //     spin_unlock(&sbi->dir_hash_lock);
     // }
 
-    unimplemented!()
+    // unimplemented!()
 } //EXPORT_SYMBOL_GPL(fat_attach); not sure what this is
 
 fn fat_set_state(sb: &mut SuperBlock, anumber: usize, anothernumber: usize) {
