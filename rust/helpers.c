@@ -43,6 +43,7 @@
 #include <linux/skbuff.h>
 #include <linux/uaccess.h>
 #include <linux/uio.h>
+#include <linux/list.h>
 
 __noreturn void rust_helper_BUG(void)
 {
@@ -772,3 +773,10 @@ inline void rust_helper_inode_inc_iversion(struct inode *inode)
 }
 
 EXPORT_SYMBOL_GPL(rust_helper_inode_inc_iversion);
+
+
+void rust_helper_hlist_add_head(struct hlist_node *n, struct hlist_head *h)
+{
+	hlist_add_head(n, h);
+}
+EXPORT_SYMBOL_GPL(rust_helper_hlist_add_head);

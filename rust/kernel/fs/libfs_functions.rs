@@ -366,6 +366,12 @@ pub fn filemap_flush(mapping: &mut AddressSpace) -> Result {
     Error::parse_int(unsafe { bindings::filemap_flush(mapping as *mut _) }).map(|_| ())
 }
 
+pub fn hlist_add_head(n: &mut bindings::hlist_node, h: &mut bindings::hlist_head) {
+    unsafe {
+        rust_helper_hlist_add_head(n.as_ptr_mut(), h.as_ptr_mut())
+    }
+}
+
 crate::declare_c_vtable!(
     SimpleDirOperations,
     bindings::file_operations,
