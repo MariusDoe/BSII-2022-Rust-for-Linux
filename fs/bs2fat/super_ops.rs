@@ -111,8 +111,8 @@ pub(crate) struct BS2FatSuperInfo {
 }
 
 pub (crate) struct BS2FatSuperHashtables {
-    pub(crate) inode_hashtable: [Option<* mut hlist_head>; FAT_HASH_SIZE],
-    pub(crate) dir_hashtable: [Option<* mut hlist_head>; FAT_HASH_SIZE],
+    pub(crate) inode_hashtable: [hlist_head; FAT_HASH_SIZE],
+    pub(crate) dir_hashtable: [hlist_head; FAT_HASH_SIZE],
 }
 
 impl Default for BS2FatSuperHashtables {

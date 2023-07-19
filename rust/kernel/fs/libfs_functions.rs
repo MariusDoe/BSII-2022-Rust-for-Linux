@@ -26,6 +26,15 @@ extern "C" {
     fn rust_helper_sync_mapping_buffers(mapping: *mut bindings::address_space) -> c_int;
     fn rust_helper_brelse(bh: *mut bindings::buffer_head);
     fn rust_helper_hlist_add_head(n: *mut bindings::hlist_node, h: *mut bindings::hlist_head);
+    fn rust_helper_sb_find_get_block(
+        sb: *mut bindings::super_block,
+        block: bindings::sector_t,
+    ) -> *mut bindings::buffer_head;
+    fn rust_helper_buffer_uptodate(bh: *mut bindings::buffer_head) -> i32;
+    fn rust_helper_sb_breadahead(
+        sb: *mut bindings::super_block,
+        block: bindings::sector_t,
+    );
 }
 
 pub fn generic_file_read_iter(iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
@@ -370,6 +379,20 @@ pub fn filemap_flush(mapping: &mut AddressSpace) -> Result {
 pub fn hlist_add_head(n: &mut bindings::hlist_node, h: &mut bindings::hlist_head) {
     unsafe {
         rust_helper_hlist_add_head(core::ptr::addr_of_mut!(*n), core::ptr::addr_of_mut!(*h))
+    }
+}
+
+pub fn sb_find_get_block(sb: &mut SuperBlock, block: bindings::sector_t) -> Option<&mut BufferHead> {
+    unsafe { rust_helper_sb_find_get_block(sb.as_ptr_mut(), block).as_mut() }.map(AsMut::as_mut)
+}
+
+pub fn buffer_uptodate(buffer_head: &mut BufferHead) -> bool {
+    unsafe { rust_helper_buffer_uptodate(buffer_head.as_ptr_mut()) != 0 }
+}
+
+pub fn sb_breadahead(sb: &mut SuperBlock, block: bindings::sector_t) {
+    unsafe {
+        rust_helper_sb_breadahead(sb.as_ptr_mut(), block);
     }
 }
 

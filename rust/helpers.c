@@ -780,3 +780,21 @@ void rust_helper_hlist_add_head(struct hlist_node *n, struct hlist_head *h)
 	hlist_add_head(n, h);
 }
 EXPORT_SYMBOL_GPL(rust_helper_hlist_add_head);
+
+inline struct buffer_head *rust_helper_sb_find_get_block(struct super_block *sb,
+							 sector_t block)
+{
+	return sb_find_get_block(sb, block);
+}
+EXPORT_SYMBOL_GPL(rust_helper_sb_find_get_block);
+
+inline int rust_helper_buffer_upto_date(struct buffer_head *bh)
+{
+	return buffer_uptodate(bh);
+}
+EXPORT_SYMBOL_GPL(rust_helper_buffer_upto_date);
+
+inline void rust_helper_sb_breadahead(struct super_block *sb, sector_t block)
+{
+	sb_breadahead(sb, block);
+}
