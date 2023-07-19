@@ -315,7 +315,7 @@ fn init_superblock_and_info(
             return Err(Fail(e));
         }
         inode.insert_hash();
-        fat_attach(inode, 0);
+        fat_attach(inode, 0, &mut ops);
         Dentry::make_root(inode)
             .ok_or_else(|| {
                 pr_err!("get root inode failed");
@@ -664,7 +664,7 @@ fn fat_get_entry(dir: &Inode, pos: &mut i64, bh: &mut Option<&mut BufferHead>, d
     if let (Some(bh), Some(de_old)) = (*bh, *de) {
         if de_old as *const Bs2FatDirEntry as isize - (bh.b_data as isize) < MSDOS_SB(dir.super_block_mut()).dir_per_block as isize - 1 {
             *pos += core::mem::size_of::<msdos_dir_entry>() as i64;
-            let new_de = core::ptr::addr_of!(*de_old).offset(1) as *mut Bs2FatDirEntry;
+            let new_de = unsafe{core::ptr::addr_of!(*de_old).offset(1) as *mut Bs2FatDirEntry};
             let new_de = unsafe {new_de.as_mut()}.unwrap();
             *de = Some(new_de);
         }
@@ -781,27 +781,21 @@ fn fat_hash(i_pos: usize) -> u32 {
     return v.overflowing_shr(32-FAT_HASH_BITS).0;
 }
 
-fn fat_attach(inode: &mut Inode, i_pos: usize) {
+fn fat_attach(inode: &mut Inode, i_pos: usize, ops: &mut BS2FatSuperOps) {
     let sbi = MSDOS_SB(inode.super_block_mut());
     
     if inode.i_ino != MSDOS_ROOT_INO as u64 {
         let index = fat_hash(i_pos) as usize;
 
-        sbi.inode_hash_lock.lock();
+        let mut guard = ops.mutex.inode_hash_lock.lock_noguard();
 
         MSDOS_I(inode).i_pos = i_pos as i64;
+    
+        let head = sbi.hashtables.inode_hashtable[index];
 
-        let head = sbi.hashtables.inode_hashtable[index].unwrap_or_else(|| {
-            let new_instance = Box::new(hlist_head{ first: todo!() });
-            let raw_ptr = Box::into_raw(new_instance);
-            sbi.hashtables.inode_hashtable[index] = Some(raw_ptr);
-            raw_ptr
-        });
-        let head = &mut unsafe{*head};
+        libfs_functions::hlist_add_head(&mut MSDOS_I(inode).i_fat_hash, &mut head);
 
-        libfs_functions::hlist_add_head(&mut MSDOS_I(inode).i_fat_hash, head);
-
-        sbi.inode_hash_lock.unlock();
+        unsafe {ops.mutex.inode_hash_lock.unlock(&mut guard)};
     }
     
     // TODO: NFS support still missing
@@ -821,7 +815,50 @@ fn fat_attach(inode: &mut Inode, i_pos: usize) {
     // unimplemented!()
 } //EXPORT_SYMBOL_GPL(fat_attach); not sure what this is
 
-fn fat_set_state(sb: &mut SuperBlock, anumber: usize, anothernumber: usize) {
+fn fat_set_state(sb: &mut SuperBlock, set: u32, force: u32) {
+
+    if (sb.s_flags & SB_RDONLY as u64) != 0 && force == 0 {
+        return;
+    }
+    
+    if MSDOS_SB(sb).dirty != 0 {
+        if set != 0 {
+            pr_info!("Volume was not properly unmounted. Some data may be corrupt. Please run fsck.")
+        }
+
+        return;
+    }
+
+    let bh = sb.read_block(0)
+    .expectk("unable to read boot sector to mark fs as dirty");
+    
+
+    let b = bh.b_data as *mut fat_boot_sector;
+    let b = unsafe{b.as_mut()}.unwrap();
+
+    unsafe {
+        if is_fat32(MSDOS_SB(sb)) {
+            if set != 0 {
+                b.__bindgen_anon_1.fat32.state |= FAT_STATE_DIRTY;
+            }
+            else {
+                b.__bindgen_anon_1.fat32.state &= !FAT_STATE_DIRTY;
+            }
+        } else /* fat 16 and 12 */ {
+            if set != 0 {
+                b.__bindgen_anon_1.fat16.state |= FAT_STATE_DIRTY;
+            } else {
+                b.__bindgen_anon_1.fat16.state &= !FAT_STATE_DIRTY;
+            }
+        }
+    };
+
+    unsafe {
+        mark_buffer_dirty(bh.as_ptr_mut());
+        sync_dirty_buffer(bh.as_ptr_mut());
+    };
+
+    libfs_functions::release_buffer(bh);
     /*
     struct buffer_head *bh;
     struct fat_boot_sector *b;
