@@ -25,6 +25,7 @@ extern "C" {
     ) -> c_int;
     fn rust_helper_sync_mapping_buffers(mapping: *mut bindings::address_space) -> c_int;
     fn rust_helper_brelse(bh: *mut bindings::buffer_head);
+    fn rust_helper_hlist_add_head(n: *mut bindings::hlist_node, h: *mut bindings::hlist_head);
 }
 
 pub fn generic_file_read_iter(iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
@@ -368,7 +369,7 @@ pub fn filemap_flush(mapping: &mut AddressSpace) -> Result {
 
 pub fn hlist_add_head(n: &mut bindings::hlist_node, h: &mut bindings::hlist_head) {
     unsafe {
-        rust_helper_hlist_add_head(n.as_ptr_mut(), h.as_ptr_mut())
+        rust_helper_hlist_add_head(core::ptr::addr_of_mut!(*n), core::ptr::addr_of_mut!(*h))
     }
 }
 
