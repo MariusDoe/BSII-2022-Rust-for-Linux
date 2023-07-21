@@ -324,7 +324,11 @@ macro_rules! from_kernel_result {
 
 pub(crate) use from_kernel_result;
 
-#[macro_export]
+
+/// Transforms a [`crate::error::Result<*T>`] to a kernel pointer result.
+///
+/// This is useful when calling Rust functions that return [`create::error::Result<*T>`]
+/// from inside `extern "C"` functions that need to return a pointer error result.
 macro_rules! ret_err_ptr {
     ($ex:expr) => {
         match $ex {
@@ -333,4 +337,4 @@ macro_rules! ret_err_ptr {
         }
     };
 }
-
+pub(crate) use ret_err_ptr;

@@ -1211,6 +1211,19 @@ unsafe impl<T: Type + ?Sized> AlwaysRefCounted for DEntry<T> {
     }
 }
 
+impl<T: Type + ?Sized> DEntry<T> {
+    /// Creates a reference to a [`DEntry`] from a valid pointer.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `ptr` is valid and remains valid for the lifetime of the
+    /// returned [`DEntry`] instance.
+    pub(crate) unsafe fn from_ptr<'a>(ptr: *const bindings::dentry) -> &'a DEntry<T> {
+        // SAFETY: The safety requirements guarantee the validity of the dereference, while the
+        // `DEntry` type being transparent makes the cast ok.
+        unsafe { &*ptr.cast() }
+    }
+}
 /// A dentry that is meant to be used as the root of a file system.
 ///
 /// We have a specific type for the root dentry because we may need to do extra work when it is
@@ -1487,10 +1500,7 @@ pub const fn file_creator<T: Type + ?Sized, F: file::Operations<OpenData = T::IN
     file_creator::<T, F>
 }
 
-pub struct INodeOperationsVtable<A: Type + ?Sized, T>(
-    marker::PhantomData<A>,
-    marker::PhantomData<T>,
-);
+pub struct INodeOperationsVtable<A: Type + ?Sized, T>(PhantomData<A>, PhantomData<T>);
 
 /// Corresponds to the kernel's `struct inode_operations`.
 ///
@@ -1605,11 +1615,11 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
         iattr: *mut bindings::iattr,
     ) -> core::ffi::c_int {
         unsafe {
-            let dentry = dentry.as_mut().expect("setattr got null dentry").as_mut();
-            let inode = dentry.d_inode; // use d_inode method instead?
-            let i_ops = &*((*inode).i_private as *const T);
+            let dentry = dentry.as_mut().expect("setattr got null dentry");
+            let inode = dentry.d_inode.as_mut().expect("dentry got null d_inode"); // use d_inode method instead?
+            let i_ops = &*(inode.i_private as *const T);
             from_kernel_result! {
-                i_ops.setattr(&mut (*mnt_userns), dentry, &mut (*iattr)).map(|()| 0)
+                i_ops.setattr(&mut (*mnt_userns), &mut DEntry::<A>::from_ptr(dentry), &mut (*iattr)).map(|()| 0)
             }
         }
     }
@@ -1639,11 +1649,11 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
         excl: bool,
     ) -> core::ffi::c_int {
         unsafe {
-            let dir = dir.as_mut().expect("create got null dir").as_mut();
+            let dir = dir.as_mut().expect("create got null dir");
             let i_ops = &*(dir.i_private as *const T);
-            let dentry = dentry.as_mut().expect("create got null dentry").as_mut();
+            let dentry = DEntry::<A>::from_ptr(dentry);
             from_kernel_result! {
-                i_ops.create(&mut (*mnt_userns), dir, dentry, Mode::from_int(mode), excl).map(|()| 0)
+                i_ops.create(&mut (*mnt_userns), dir, &mut dentry, Mode::from_int(mode), excl).map(|()| 0)
             }
         }
     }
@@ -1653,11 +1663,11 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
         flags: core::ffi::c_uint,
     ) -> *mut bindings::dentry {
         unsafe {
-            let dir = dir.as_mut().expect("lookup got null dir").as_mut();
+            let dir = dir.as_mut().expect("lookup got null dir");
             let i_ops = &*(dir.i_private as *const T);
-            let dentry = dentry.as_mut().expect("lookup got null dentry").as_mut();
+            let dentry = dentry.as_mut().expect("lookup got null dentry");
             ret_err_ptr! {
-                i_ops.lookup(dir, dentry, flags).map(|p| p as *mut _)
+                i_ops.lookup(&mut INode::<A>::from_ptr(dir), &mut DEntry::<A>::from_ptr(dentry), flags).map(|p| p as *mut _)
             }
         }
     }
@@ -1667,15 +1677,12 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
         dentry: *mut bindings::dentry,
     ) -> core::ffi::c_int {
         unsafe {
-            let dir = dir.as_mut().expect("link got null dir").as_mut();
+            let dir = dir.as_mut().expect("link got null dir");
             let i_ops = &*(dir.i_private as *const T);
-            let old_dentry = old_dentry
-                .as_mut()
-                .expect("link got null old_dentry")
-                .as_mut();
-            let dentry = dentry.as_mut().expect("link got null dentry").as_mut();
+            let old_dentry = old_dentry.as_mut().expect("link got null old_dentry");
+            let dentry = dentry.as_mut().expect("link got null dentry");
             from_kernel_result! {
-                i_ops.link(old_dentry, dir, dentry).map(|()| 0)
+                i_ops.link(&mut DEntry::<A>::from_ptr(old_dentry), &mut INode::<A>::from_ptr(dir), &mut DEntry::<A>::from_ptr(dentry)).map(|()| 0)
             }
         }
     }
@@ -1684,11 +1691,11 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
         dentry: *mut bindings::dentry,
     ) -> core::ffi::c_int {
         unsafe {
-            let dir = dir.as_mut().expect("unlink got null dir").as_mut();
+            let dir = dir.as_mut().expect("unlink got null dir");
             let i_ops = &*(dir.i_private as *const T);
-            let dentry = dentry.as_mut().expect("unlink got null dentry").as_mut();
+            let dentry = dentry.as_mut().expect("unlink got null dentry");
             from_kernel_result! {
-                i_ops.unlink(dir, dentry).map(|()| 0)
+                i_ops.unlink(&mut INode::<A>::from_ptr(dir), &mut DEntry::<A>::from_ptr(dentry)).map(|()| 0)
             }
         }
     }
@@ -1699,11 +1706,11 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
         symname: *const core::ffi::c_char,
     ) -> core::ffi::c_int {
         unsafe {
-            let dir = dir.as_mut().expect("symlink got null dir").as_mut();
+            let dir = dir.as_mut().expect("symlink got null dir");
             let i_ops = &*(dir.i_private as *const T);
-            let dentry = dentry.as_mut().expect("symlink got null dentry").as_mut();
+            let dentry = dentry.as_mut().expect("symlink got null dentry");
             from_kernel_result! {
-                i_ops.symlink(&mut (*mnt_userns), dir, dentry, CStr::from_char_ptr(symname)).map(|()| 0)
+                i_ops.symlink(&mut (*mnt_userns), &mut INode::<A>::from_ptr(dir), &mut DEntry::<A>::from_ptr(dentry), CStr::from_char_ptr(symname)).map(|()| 0)
             }
         }
     }
@@ -1714,11 +1721,11 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
         mode: ModeInt,
     ) -> core::ffi::c_int {
         unsafe {
-            let dir = dir.as_mut().expect("mkdir got null dir").as_mut();
+            let dir = dir.as_mut().expect("mkdir got null dir");
             let i_ops = &*(dir.i_private as *const T);
-            let dentry = dentry.as_mut().expect("mkdir got null dentry").as_mut();
+            let dentry = dentry.as_mut().expect("mkdir got null dentry");
             from_kernel_result! {
-                i_ops.mkdir(&mut (*mnt_userns), dir, dentry, Mode::from_int(mode)).map(|()| 0) // todo: mode_t is u32 but u16 in Mode?
+                i_ops.mkdir(&mut (*mnt_userns), &mut INode::<A>::from_ptr(dir), &mut DEntry::<A>::from_ptr(dentry), Mode::from_int(mode)).map(|()| 0) // todo: mode_t is u32 but u16 in Mode?
             }
         }
     }
@@ -1727,11 +1734,11 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
         dentry: *mut bindings::dentry,
     ) -> core::ffi::c_int {
         unsafe {
-            let dir = dir.as_mut().expect("rmdir got null dir").as_mut();
+            let dir = dir.as_mut().expect("rmdir got null dir");
             let i_ops = &*(dir.i_private as *const T);
-            let dentry = dentry.as_mut().expect("rmdir got null dentry").as_mut();
+            let dentry = dentry.as_mut().expect("rmdir got null dentry");
             from_kernel_result! {
-                i_ops.rmdir(dir, dentry).map(|()| 0)
+                i_ops.rmdir(&mut INode::<A>::from_ptr(dir), &mut DEntry::<A>::from_ptr(dentry)).map(|()| 0)
             }
         }
     }
@@ -1743,11 +1750,11 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
         dev: bindings::dev_t,
     ) -> core::ffi::c_int {
         unsafe {
-            let dir = dir.as_mut().expect("mknod got null dir").as_mut();
+            let dir = dir.as_mut().expect("mknod got null dir");
             let i_ops = &*(dir.i_private as *const T);
-            let dentry = dentry.as_mut().expect("mknod got null dentry").as_mut();
+            let dentry = dentry.as_mut().expect("mknod got null dentry");
             from_kernel_result! {
-                i_ops.mknod(&mut (*mnt_userns), dir, dentry, Mode::from_int(mode), dev).map(|()| 0)
+                i_ops.mknod(&mut (*mnt_userns), &mut INode::<A>::from_ptr(dir), &mut DEntry::<A>::from_ptr(dentry), Mode::from_int(mode), dev).map(|()| 0)
             }
         }
     }
@@ -1760,19 +1767,13 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
         flags: core::ffi::c_uint,
     ) -> core::ffi::c_int {
         unsafe {
-            let old_dir = old_dir.as_mut().expect("rename got null dir").as_mut();
+            let old_dir = old_dir.as_mut().expect("rename got null dir");
             let i_ops = &*(old_dir.i_private as *const T);
-            let old_dentry = old_dentry
-                .as_mut()
-                .expect("rename got null dentry")
-                .as_mut();
-            let new_dir = new_dir.as_mut().expect("rename got null dir").as_mut();
-            let new_dentry = new_dentry
-                .as_mut()
-                .expect("rename got null dentry")
-                .as_mut();
+            let old_dentry = old_dentry.as_mut().expect("rename got null dentry");
+            let new_dir = new_dir.as_mut().expect("rename got null dir");
+            let new_dentry = new_dentry.as_mut().expect("rename got null dentry");
             from_kernel_result! {
-                i_ops.rename(&mut (*mnt_userns), old_dir, old_dentry, new_dir, new_dentry, flags).map(|()| 0)
+                i_ops.rename(&mut (*mnt_userns), &mut INode::<A>::from_ptr(old_dir), &mut DEntry::<A>::from_ptr(old_dentry), &mut INode::<A>::from_ptr(new_dir), &mut DEntry::<A>::from_ptr(new_dentry), flags).map(|()| 0)
             }
         }
     }
