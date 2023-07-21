@@ -110,7 +110,6 @@ impl Error {
     }
 
     /// Returns the error encoded as a pointer.
-    #[allow(dead_code)]
     pub(crate) fn to_ptr<T>(self) -> *mut T {
         // SAFETY: self.0 is a valid error due to its invariant.
         unsafe { bindings::ERR_PTR(self.0.into()) as *mut _ }
@@ -324,3 +323,14 @@ macro_rules! from_kernel_result {
 }
 
 pub(crate) use from_kernel_result;
+
+#[macro_export]
+macro_rules! ret_err_ptr {
+    ($ex:expr) => {
+        match $ex {
+            Ok(val) => val,
+            Err(err) => return err.to_ptr(),
+        }
+    };
+}
+

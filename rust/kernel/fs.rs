@@ -4,7 +4,7 @@
 //!
 //! C headers: [`include/linux/fs.h`](../../../../include/linux/fs.h)
 
-use crate::error::{from_kernel_result, to_result, Error, Result};
+use crate::error::{from_kernel_result, ret_err_ptr, to_result, Error, Result};
 use crate::file;
 use crate::types::{ARef, AlwaysRefCounted, ForeignOwnable, ScopeGuard};
 use crate::{
@@ -1162,6 +1162,18 @@ impl<T: Type + ?Sized> INode<T> {
         // SAFETY: Add safety annotation.
         unsafe { (*ptr::addr_of!((*ptr).data)).assume_init_ref() }
     }
+
+    /// Creates a reference to a [`INode`] from a valid pointer.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `ptr` is valid and remains valid for the lifetime of the
+    /// returned [`INode`] instance.
+    pub(crate) unsafe fn from_ptr<'a>(ptr: *const bindings::inode) -> &'a INode<T> {
+        // SAFETY: The safety requirements guarantee the validity of the dereference, while the
+        // `File` type being transparent makes the cast ok.
+        unsafe { &*ptr.cast() }
+    }
 }
 
 // SAFETY: The type invariants guarantee that `INode` is always ref-counted.
@@ -1475,7 +1487,7 @@ pub const fn file_creator<T: Type + ?Sized, F: file::Operations<OpenData = T::IN
     file_creator::<T, F>
 }
 
-pub struct INodeOperationsVtable<A: fs::Type + ?Sized, T>(
+pub struct INodeOperationsVtable<A: Type + ?Sized, T>(
     marker::PhantomData<A>,
     marker::PhantomData<T>,
 );
@@ -1488,7 +1500,7 @@ pub struct INodeOperationsVtable<A: fs::Type + ?Sized, T>(
 /// [`Sync`]. It must also be [`Send`] because [`FileOperations::release`] will be called from the
 /// thread that decrements that associated file's refcount to zero.
 #[vtable]
-pub trait INodeOperations<T: fs::Type + ?Sized>: Send + Sync + Sized + Default {
+pub trait INodeOperations<T: Type + ?Sized>: Send + Sync + Sized + Default {
     fn getattr(
         &self,
         _mnt_userns: &mut UserNamespace,
@@ -1582,7 +1594,7 @@ pub trait INodeOperations<T: fs::Type + ?Sized>: Send + Sync + Sized + Default {
     }
 }
 
-impl<A: fs::Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
+impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
     /// Corresponds to the kernel's `struct adress_space_operations`.
     ///
     /// You implement this trait whenever you would create a `struct inode_operations`.
@@ -1644,7 +1656,9 @@ impl<A: fs::Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
             let dir = dir.as_mut().expect("lookup got null dir").as_mut();
             let i_ops = &*(dir.i_private as *const T);
             let dentry = dentry.as_mut().expect("lookup got null dentry").as_mut();
-            ret_err_ptr!(i_ops.lookup(dir, dentry, flags).map(|p| p as *mut _))
+            ret_err_ptr! {
+                i_ops.lookup(dir, dentry, flags).map(|p| p as *mut _)
+            }
         }
     }
     unsafe extern "C" fn link_callback(
