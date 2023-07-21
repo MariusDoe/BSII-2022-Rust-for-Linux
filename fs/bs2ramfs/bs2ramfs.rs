@@ -2,20 +2,19 @@
 #![allow(missing_docs)]
 #![allow(improper_ctypes)]
 
-use alloc::boxed::Box;
 use core::{
-    ffi::{c_int, c_longlong, c_uint, c_void},
-    mem, ptr,
+    ffi::{c_longlong, c_uint, c_void},
 };
 
 use kernel::{
     module_fs,
     bindings,
-    file::{File, SeekFrom},
+    file::{File, Operations, Folio, AddressSpace, Page},
     fs::{
         address_space_operations::AddressSpaceOperations,
         DEntry,
         INode,
+        INodeParams,
         // inode::{UpdateATime, UpdateCTime, UpdateMTime},
         // inode_operations::InodeOperations,
         // kiocb::Kiocb,
@@ -24,12 +23,11 @@ use kernel::{
         NewSuperBlock,
         Super,
         SuperParams,
-        Type, INodeParams,
+        Type,
+        EmptyContext,
         // super_operations::{Kstatfs, SeqFile, SuperOperations},
         // FileSystemBase, FileSystemType,
     },
-    iov_iter::IovIter,
-    mm,
     prelude::*,
     str::CStr,
     // types::{AddressSpace, Dev, Folio, Iattr, Kstat, Page, Path, UserNamespace},
@@ -65,9 +63,11 @@ impl Type for BS2Ramfs {
     const NAME: &'static CStr = kernel::c_str!("bs2ramfs_name");
     const FLAGS: i32 = bindings::FS_USERNS_MOUNT as _;
     const SUPER_TYPE: Super = Super::Independent;
+    type INodeData = ();
+    type Context = EmptyContext;
 
     fn fill_super(
-        _: (),
+        _data: (),
         sb: NewSuperBlock<'_, Self>,
     ) -> Result<&SuperBlock<Self>> {
         pr_emerg!("Reached ramfs fill_super impl");
@@ -87,25 +87,6 @@ impl Type for BS2Ramfs {
         let sb = sb.init_root(root)?;
         pr_emerg!("SB filled");
         Ok(sb)
-    }
-}
-
-impl kernel::fs::Type for BS2Ramfs {
-    const NAME: &'static CStr = kernel::c_str!("bs2ramfs_name");
-    const FLAGS: i32 = 0;
-
-    fn mount(
-        _fs_type: &'_ mut FileSystemType,
-        flags: c_int,
-        _device_name: &CStr,
-        data: Option<&mut Self::MountOptions>,
-    ) -> Result<*mut bindings::dentry> {
-        //libfs_functions::mount_nodev::<Self>(flags, data)
-    }
-
-    fn kill_super(sb: &mut SuperBlock) {
-        let _ = unsafe { Box::from_raw(mem::replace(&mut sb.s_fs_info, ptr::null_mut())) };
-        //libfs_functions::kill_litter_super(sb);
     }
 }
 
@@ -132,69 +113,14 @@ impl Default for RamfsMountOpts {
 struct Bs2RamfsFileOps;
 
 #[vtable] // file.rs 570 OperationsVtable
-impl file::Operations for Bs2RamfsFileOps {
+impl Operations for Bs2RamfsFileOps {
+    type Data = ();
 
     fn open(_context: &(), _file: &File) -> Result<Self::Data> {
         Ok(())
     }
 
-    fn read_iter(_data: (), iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
-        libfs_functions::generic_file_read_iter(iocb, iter)
-    }
-
-    fn write_iter(_data: (), iocb: &mut Kiocb, iter: &mut IovIter) -> Result<usize> {
-        libfs_functions::generic_file_write_iter(iocb, iter)
-    }
-
-    fn mmap(_data: (), file: &File, vma: &mut mm::virt::Area) -> Result {
-        libfs_functions::generic_file_mmap(file, vma)
-    }
-
-    fn fsync(_data: (), file: &File, start: u64, end: u64, datasync: bool) -> Result<u32> {
-        libfs_functions::noop_fsync(file, start, end, datasync)
-    }
-
-    fn get_unmapped_area(
-        _data: (),
-        _file: &File,
-        _addr: u64,
-        _len: u64,
-        _pgoff: u64,
-        _flags: u64,
-    ) -> Result<u64> {
-        pr_emerg!(
-            "AKAHSDkADKHAKHD WE ARE ABOUT TO PANIC (IN MMU_GET_UNMAPPED_AREA;;;; LOOK HERE COME ON"
-        );
-        unimplemented!()
-    }
-
-    fn seek(_data: (), file: &File, pos: SeekFrom) -> Result<u64> {
-        libfs_functions::generic_file_llseek(file, pos)
-    }
-
-    fn splice_read(
-        _data: (),
-        file: &File,
-        pos: *mut i64,
-        pipe: &mut bindings::pipe_inode_info,
-        len: usize,
-        flags: u32,
-    ) -> Result<usize> {
-        libfs_functions::generic_file_splice_read(file, pos, pipe, len, flags)
-    }
-
-    fn splice_write(
-        _data: (),
-        pipe: &mut bindings::pipe_inode_info,
-        file: &File,
-        pos: *mut i64,
-        len: usize,
-        flags: u32,
-    ) -> Result<usize> {
-        libfs_functions::iter_file_splice_write(pipe, file, pos, len, flags)
-    }
 }
-
 #[derive(Default)]
 struct Bs2RamfsSuperOps {
     mount_opts: RamfsMountOpts,

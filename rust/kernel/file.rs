@@ -585,7 +585,7 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         llseek: if T::HAS_SEEK {
             Some(Self::llseek_callback)
         } else {
-            None
+            Some(bindings::generic_file_llseek)
         },
 
         check_flags: None,
@@ -602,8 +602,8 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         flush: None,
         fsync: if T::HAS_FSYNC {
             Some(Self::fsync_callback)
-        } else {
-            None
+        } else { 
+            Some(bindings::noop_fsync)
         },
         get_unmapped_area: None,
         iterate: None,
@@ -612,8 +612,8 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         lock: None,
         mmap: if T::HAS_MMAP {
             Some(Self::mmap_callback)
-        } else {
-            None
+        } else { 
+            Some(bindings::generic_file_mmap)
         },
         mmap_supported_flags: 0,
         owner: ptr::null_mut(),
@@ -625,14 +625,14 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         read_iter: if T::HAS_READ {
             Some(Self::read_iter_callback)
         } else {
-            None
+            Some(bindings::generic_file_read_iter)
         },
         remap_file_range: None,
         sendpage: None,
         setlease: None,
         show_fdinfo: None,
-        splice_read: None,
-        splice_write: None,
+        splice_read: Some(bindings::generic_file_splice_read),
+        splice_write: Some(bindings::iter_file_splice_write),
         unlocked_ioctl: if T::HAS_IOCTL {
             Some(Self::unlocked_ioctl_callback)
         } else {
@@ -643,7 +643,7 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         write_iter: if T::HAS_WRITE {
             Some(Self::write_iter_callback)
         } else {
-            None
+            Some(bindings::generic_file_write_iter)
         },
     };
 
@@ -849,7 +849,7 @@ pub trait Operations {
         _file: &File,
         _cmd: &mut IoctlCommand,
     ) -> Result<i32> {
-        Err(ENOTTY)
+       Err(ENOTTY)
     }
 
     /// Performs 32-bit IO control operations on that are specific to the file on 64-bit kernels.
