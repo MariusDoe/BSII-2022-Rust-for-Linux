@@ -1474,3 +1474,373 @@ pub const fn file_creator<T: Type + ?Sized, F: file::Operations<OpenData = T::IN
     }
     file_creator::<T, F>
 }
+
+pub struct INodeOperationsVtable<A: fs::Type + ?Sized, T>(
+    marker::PhantomData<A>,
+    marker::PhantomData<T>,
+);
+
+/// Corresponds to the kernel's `struct inode_operations`.
+///
+/// You implement this trait whenever you would create a `struct inode_operations`.
+///
+/// File descriptors may be used from multiple threads/processes concurrently, so your type must be
+/// [`Sync`]. It must also be [`Send`] because [`FileOperations::release`] will be called from the
+/// thread that decrements that associated file's refcount to zero.
+#[vtable]
+pub trait INodeOperations<T: fs::Type + ?Sized>: Send + Sync + Sized + Default {
+    fn getattr(
+        &self,
+        _mnt_userns: &mut UserNamespace,
+        _path: &Path,
+        _stat: &mut Kstat,
+        _request_mask: u32,
+        _query_flags: u32,
+    ) -> Result {
+        Err(EINVAL)
+    }
+
+    fn setattr(
+        &self,
+        _mnt_userns: &mut UserNamespace,
+        _dentry: &mut DEntry<T>,
+        _iattr: &mut Iattr,
+    ) -> Result {
+        Err(EINVAL)
+    }
+
+    fn create(
+        &self,
+        _mnt_userns: &mut UserNamespace,
+        _dir: &mut INode<T>,
+        _dentry: &mut DEntry<T>,
+        _mode: Mode,
+        _excl: bool,
+    ) -> Result {
+        Err(EINVAL)
+    }
+    fn lookup(
+        &self,
+        _dir: &mut INode<T>,
+        _dentry: &mut DEntry<T>,
+        _flags: core::ffi::c_uint,
+    ) -> Result<*mut DEntry<T>> {
+        Err(EINVAL)
+    }
+    fn link(
+        &self,
+        _old_dentry: &mut DEntry<T>,
+        _dir: &mut INode<T>,
+        _dentry: &mut DEntry<T>,
+    ) -> Result {
+        Err(EINVAL)
+    }
+    fn unlink(&self, _dir: &mut INode<T>, _dentry: &mut DEntry<T>) -> Result {
+        Err(EINVAL)
+    }
+    fn symlink(
+        &self,
+        _mnt_userns: &mut UserNamespace,
+        _dir: &mut INode<T>,
+        _dentry: &mut DEntry<T>,
+        _symname: &'static CStr,
+    ) -> Result {
+        Err(EINVAL)
+    }
+    fn mkdir(
+        &self,
+        _mnt_userns: &mut UserNamespace,
+        _dir: &mut INode<T>,
+        _dentry: &mut DEntry<T>,
+        _mode: Mode,
+    ) -> Result {
+        Err(EINVAL)
+    }
+    fn rmdir(&self, _dir: &mut INode<T>, _dentry: &mut DEntry<T>) -> Result {
+        Err(EINVAL)
+    }
+    fn mknod(
+        &self,
+        _mnt_userns: &mut UserNamespace,
+        _dir: &mut INode<T>,
+        _dentry: &mut DEntry<T>,
+        _mode: Mode,
+        _dev: Dev,
+    ) -> Result {
+        Err(EINVAL)
+    }
+    fn rename(
+        &self,
+        _mnt_userns: &mut UserNamespace,
+        _old_dir: &mut INode<T>,
+        _old_dentry: &mut DEntry<T>,
+        _new_dir: &mut INode<T>,
+        _new_dentry: &mut DEntry<T>,
+        _flags: core::ffi::c_uint,
+    ) -> Result {
+        Err(EINVAL)
+    }
+}
+
+impl<A: fs::Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
+    /// Corresponds to the kernel's `struct adress_space_operations`.
+    ///
+    /// You implement this trait whenever you would create a `struct inode_operations`.
+
+    unsafe extern "C" fn setattr_callback(
+        mnt_userns: *mut bindings::mnt_idmap,
+        dentry: *mut bindings::dentry,
+        iattr: *mut bindings::iattr,
+    ) -> core::ffi::c_int {
+        unsafe {
+            let dentry = dentry.as_mut().expect("setattr got null dentry").as_mut();
+            let inode = dentry.d_inode; // use d_inode method instead?
+            let i_ops = &*((*inode).i_private as *const T);
+            from_kernel_result! {
+                i_ops.setattr(&mut (*mnt_userns), dentry, &mut (*iattr)).map(|()| 0)
+            }
+        }
+    }
+
+    unsafe extern "C" fn getattr_callback(
+        mnt_userns: *mut bindings::mnt_idmap,
+        path: *const bindings::path,
+        stat: *mut bindings::kstat,
+        request_mask: u32,
+        query_flags: u32,
+    ) -> core::ffi::c_int {
+        unsafe {
+            let dentry = (*path).dentry;
+            let inode = (*dentry).d_inode; // use d_inode method instead?
+            let i_ops = &*((*inode).i_private as *const T);
+            from_kernel_result! {
+                i_ops.getattr(&mut (*mnt_userns), &(*path), &mut (*stat), request_mask, query_flags).map(|()| 0)
+            }
+        }
+    }
+
+    unsafe extern "C" fn create_callback(
+        mnt_userns: *mut bindings::mnt_idmap,
+        dir: *mut bindings::inode,
+        dentry: *mut bindings::dentry,
+        mode: ModeInt,
+        excl: bool,
+    ) -> core::ffi::c_int {
+        unsafe {
+            let dir = dir.as_mut().expect("create got null dir").as_mut();
+            let i_ops = &*(dir.i_private as *const T);
+            let dentry = dentry.as_mut().expect("create got null dentry").as_mut();
+            from_kernel_result! {
+                i_ops.create(&mut (*mnt_userns), dir, dentry, Mode::from_int(mode), excl).map(|()| 0)
+            }
+        }
+    }
+    unsafe extern "C" fn lookup_callback(
+        dir: *mut bindings::inode,
+        dentry: *mut bindings::dentry,
+        flags: core::ffi::c_uint,
+    ) -> *mut bindings::dentry {
+        unsafe {
+            let dir = dir.as_mut().expect("lookup got null dir").as_mut();
+            let i_ops = &*(dir.i_private as *const T);
+            let dentry = dentry.as_mut().expect("lookup got null dentry").as_mut();
+            ret_err_ptr!(i_ops.lookup(dir, dentry, flags).map(|p| p as *mut _))
+        }
+    }
+    unsafe extern "C" fn link_callback(
+        old_dentry: *mut bindings::dentry,
+        dir: *mut bindings::inode,
+        dentry: *mut bindings::dentry,
+    ) -> core::ffi::c_int {
+        unsafe {
+            let dir = dir.as_mut().expect("link got null dir").as_mut();
+            let i_ops = &*(dir.i_private as *const T);
+            let old_dentry = old_dentry
+                .as_mut()
+                .expect("link got null old_dentry")
+                .as_mut();
+            let dentry = dentry.as_mut().expect("link got null dentry").as_mut();
+            from_kernel_result! {
+                i_ops.link(old_dentry, dir, dentry).map(|()| 0)
+            }
+        }
+    }
+    unsafe extern "C" fn unlink_callback(
+        dir: *mut bindings::inode,
+        dentry: *mut bindings::dentry,
+    ) -> core::ffi::c_int {
+        unsafe {
+            let dir = dir.as_mut().expect("unlink got null dir").as_mut();
+            let i_ops = &*(dir.i_private as *const T);
+            let dentry = dentry.as_mut().expect("unlink got null dentry").as_mut();
+            from_kernel_result! {
+                i_ops.unlink(dir, dentry).map(|()| 0)
+            }
+        }
+    }
+    unsafe extern "C" fn symlink_callback(
+        mnt_userns: *mut bindings::mnt_idmap,
+        dir: *mut bindings::inode,
+        dentry: *mut bindings::dentry,
+        symname: *const core::ffi::c_char,
+    ) -> core::ffi::c_int {
+        unsafe {
+            let dir = dir.as_mut().expect("symlink got null dir").as_mut();
+            let i_ops = &*(dir.i_private as *const T);
+            let dentry = dentry.as_mut().expect("symlink got null dentry").as_mut();
+            from_kernel_result! {
+                i_ops.symlink(&mut (*mnt_userns), dir, dentry, CStr::from_char_ptr(symname)).map(|()| 0)
+            }
+        }
+    }
+    unsafe extern "C" fn mkdir_callback(
+        mnt_userns: *mut bindings::mnt_idmap,
+        dir: *mut bindings::inode,
+        dentry: *mut bindings::dentry,
+        mode: ModeInt,
+    ) -> core::ffi::c_int {
+        unsafe {
+            let dir = dir.as_mut().expect("mkdir got null dir").as_mut();
+            let i_ops = &*(dir.i_private as *const T);
+            let dentry = dentry.as_mut().expect("mkdir got null dentry").as_mut();
+            from_kernel_result! {
+                i_ops.mkdir(&mut (*mnt_userns), dir, dentry, Mode::from_int(mode)).map(|()| 0) // todo: mode_t is u32 but u16 in Mode?
+            }
+        }
+    }
+    unsafe extern "C" fn rmdir_callback(
+        dir: *mut bindings::inode,
+        dentry: *mut bindings::dentry,
+    ) -> core::ffi::c_int {
+        unsafe {
+            let dir = dir.as_mut().expect("rmdir got null dir").as_mut();
+            let i_ops = &*(dir.i_private as *const T);
+            let dentry = dentry.as_mut().expect("rmdir got null dentry").as_mut();
+            from_kernel_result! {
+                i_ops.rmdir(dir, dentry).map(|()| 0)
+            }
+        }
+    }
+    unsafe extern "C" fn mknod_callback(
+        mnt_userns: *mut bindings::mnt_idmap,
+        dir: *mut bindings::inode,
+        dentry: *mut bindings::dentry,
+        mode: ModeInt,
+        dev: bindings::dev_t,
+    ) -> core::ffi::c_int {
+        unsafe {
+            let dir = dir.as_mut().expect("mknod got null dir").as_mut();
+            let i_ops = &*(dir.i_private as *const T);
+            let dentry = dentry.as_mut().expect("mknod got null dentry").as_mut();
+            from_kernel_result! {
+                i_ops.mknod(&mut (*mnt_userns), dir, dentry, Mode::from_int(mode), dev).map(|()| 0)
+            }
+        }
+    }
+    unsafe extern "C" fn rename_callback(
+        mnt_userns: *mut bindings::mnt_idmap,
+        old_dir: *mut bindings::inode,
+        old_dentry: *mut bindings::dentry,
+        new_dir: *mut bindings::inode,
+        new_dentry: *mut bindings::dentry,
+        flags: core::ffi::c_uint,
+    ) -> core::ffi::c_int {
+        unsafe {
+            let old_dir = old_dir.as_mut().expect("rename got null dir").as_mut();
+            let i_ops = &*(old_dir.i_private as *const T);
+            let old_dentry = old_dentry
+                .as_mut()
+                .expect("rename got null dentry")
+                .as_mut();
+            let new_dir = new_dir.as_mut().expect("rename got null dir").as_mut();
+            let new_dentry = new_dentry
+                .as_mut()
+                .expect("rename got null dentry")
+                .as_mut();
+            from_kernel_result! {
+                i_ops.rename(&mut (*mnt_userns), old_dir, old_dentry, new_dir, new_dentry, flags).map(|()| 0)
+            }
+        }
+    }
+
+    const VTABLE: bindings::inode_operations = bindings::inode_operations {
+        getattr: if T::HAS_GETATTR {
+            Some(Self::getattr_callback)
+        } else {
+            None
+        },
+        setattr: if T::HAS_SETATTR {
+            Some(Self::setattr_callback)
+        } else {
+            None
+        },
+        lookup: if T::HAS_LOOKUP {
+            Some(Self::lookup_callback)
+        } else {
+            None
+        },
+        get_link: None,
+        permission: None,
+        get_acl: None,
+        readlink: None,
+        create: if T::HAS_CREATE {
+            Some(Self::create_callback)
+        } else {
+            None
+        },
+        link: if T::HAS_LINK {
+            Some(Self::link_callback)
+        } else {
+            None
+        },
+        unlink: if T::HAS_UNLINK {
+            Some(Self::unlink_callback)
+        } else {
+            None
+        },
+        symlink: if T::HAS_SYMLINK {
+            Some(Self::symlink_callback)
+        } else {
+            None
+        },
+        mkdir: if T::HAS_MKDIR {
+            Some(Self::mkdir_callback)
+        } else {
+            None
+        },
+        rmdir: if T::HAS_RMDIR {
+            Some(Self::rmdir_callback)
+        } else {
+            None
+        },
+        mknod: if T::HAS_MKNOD {
+            Some(Self::mknod_callback)
+        } else {
+            None
+        },
+        rename: if T::HAS_RENAME {
+            Some(Self::rename_callback)
+        } else {
+            None
+        },
+        listxattr: None,
+        fiemap: None,
+        update_time: None,
+        atomic_open: None,
+        tmpfile: None,
+        set_acl: None,
+        fileattr_get: None,
+        fileattr_set: None,
+        get_inode_acl: None,
+    };
+
+    /// Builds an instance of [`struct inode_operations`].
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the adapter is compatible with the way the device is registered.
+
+    pub(crate) const unsafe fn build() -> &'static bindings::inode_operations {
+        &Self::VTABLE
+    }
+}

@@ -2,39 +2,32 @@
 #![allow(missing_docs)]
 #![allow(improper_ctypes)]
 
-use core::{
-    ffi::{c_longlong, c_uint, c_void},
-};
+use core::ffi::{c_longlong, c_uint, c_void};
 
 use kernel::{
-    module_fs,
     bindings,
     file::{
-        File,
-        Operations,
-        Folio,
-        AddressSpace,
-        AddressSpaceOperations,
-        AddressSpaceOperationsVtable,
-        Page,
+        AddressSpace, AddressSpaceOperations, AddressSpaceOperationsVtable, File, Folio,
+        Operations, Page,
     },
     fs::{
         DEntry,
+        EmptyContext,
+        // super_operations::{Kstatfs, SeqFile, SuperOperations},
+        // FileSystemBase, FileSystemType,
         INode,
         INodeParams,
+        NewSuperBlock,
+        Super,
         // inode::{UpdateATime, UpdateCTime, UpdateMTime},
         // inode_operations::InodeOperations,
         // kiocb::Kiocb,
         // libfs_functions::{self, PageSymlinkInodeOperations, SimpleDirOperations},
         SuperBlock,
-        NewSuperBlock,
-        Super,
         SuperParams,
         Type,
-        EmptyContext,
-        // super_operations::{Kstatfs, SeqFile, SuperOperations},
-        // FileSystemBase, FileSystemType,
     },
+    module_fs,
     prelude::*,
     str::CStr,
     // types::{AddressSpace, Dev, Folio, Iattr, Kstat, Page, Path, UserNamespace},
@@ -62,8 +55,8 @@ module_fs! {
     license: "GPL v2",
 }
 
-struct BS2Ramfs{
-    reg: kernel::fs::Registration
+struct BS2Ramfs {
+    reg: kernel::fs::Registration,
 }
 
 impl Type for BS2Ramfs {
@@ -73,10 +66,7 @@ impl Type for BS2Ramfs {
     type INodeData = ();
     type Context = EmptyContext;
 
-    fn fill_super(
-        _data: (),
-        sb: NewSuperBlock<'_, Self>,
-    ) -> Result<&SuperBlock<Self>> {
+    fn fill_super(_data: (), sb: NewSuperBlock<'_, Self>) -> Result<&SuperBlock<Self>> {
         pr_emerg!("Reached ramfs fill_super impl");
         let sb = sb.init(
             (),
@@ -85,7 +75,7 @@ impl Type for BS2Ramfs {
                 ..SuperParams::DEFAULT
             },
         )?;
-        let root_inode = sb.try_new_dcache_dir_inode(INodeParams { 
+        let root_inode = sb.try_new_dcache_dir_inode(INodeParams {
             mode: (bindings::S_IFDIR | 0o775) as _,
             ino: 1,
             value: (),
@@ -100,7 +90,7 @@ impl Type for BS2Ramfs {
 impl kernel::Module for BS2Ramfs {
     fn init(name: &'static CStr, module: &'static ThisModule) -> Result<Self> {
         let mut bs2ramfs_reg = kernel::fs::Registration::register(name, 0, module)?; // it should unregister itself
-        Ok(BS2Ramfs {reg: bs2ramfs_reg})
+        Ok(BS2Ramfs { reg: bs2ramfs_reg })
     }
 }
 
@@ -126,8 +116,8 @@ impl Operations for Bs2RamfsFileOps {
     fn open(_context: &(), _file: &File) -> Result<Self::Data> {
         Ok(())
     }
-
 }
+
 #[derive(Default)]
 struct Bs2RamfsSuperOps {
     mount_opts: RamfsMountOpts,
@@ -153,7 +143,6 @@ struct Bs2RamfsAOps;
 
 #[vtable]
 impl AddressSpaceOperations for Bs2RamfsAOps {
-
     fn readpage(&self, file: &File, page: &mut Page) -> Result {
         libfs_functions::simple_readpage(file, page)
     }

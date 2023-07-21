@@ -16,9 +16,10 @@ use crate::{
     iov_iter::IovIter,
     mm,
     sync::CondVar,
+    types::ARef,
+    types::AlwaysRefCounted,
     types::ForeignOwnable,
     user_ptr::{UserSlicePtr, UserSlicePtrReader, UserSlicePtrWriter},
-    types::ARef, types::AlwaysRefCounted,
 };
 use core::convert::{TryFrom, TryInto};
 use core::{cell::UnsafeCell, marker, mem, ptr};
@@ -602,7 +603,7 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         flush: None,
         fsync: if T::HAS_FSYNC {
             Some(Self::fsync_callback)
-        } else { 
+        } else {
             Some(bindings::noop_fsync)
         },
         get_unmapped_area: None,
@@ -612,7 +613,7 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         lock: None,
         mmap: if T::HAS_MMAP {
             Some(Self::mmap_callback)
-        } else { 
+        } else {
             Some(bindings::generic_file_mmap)
         },
         mmap_supported_flags: 0,
@@ -831,7 +832,7 @@ pub trait Operations {
     }
 
     /// Changes the position of the file.
-    ///
+    ///from_char_
     /// Corresponds to the `llseek` function pointer in `struct file_operations`.
     fn seek(
         _data: <Self::Data as ForeignOwnable>::Borrowed<'_>,
@@ -849,7 +850,7 @@ pub trait Operations {
         _file: &File,
         _cmd: &mut IoctlCommand,
     ) -> Result<i32> {
-       Err(ENOTTY)
+        Err(ENOTTY)
     }
 
     /// Performs 32-bit IO control operations on that are specific to the file on 64-bit kernels.
@@ -915,7 +916,6 @@ pub fn read_from_slice(s: &[u8], writer: &mut impl IoBufferWriter, offset: u64) 
     Ok(len)
 }
 
-
 // here is our stuff
 pub type AddressSpace = bindings::address_space;
 pub type Page = bindings::page;
@@ -958,14 +958,13 @@ pub trait AddressSpaceOperations: Send + Sync + Sized + Default {
 pub struct AddressSpaceOperationsVtable<T>(marker::PhantomData<T>);
 
 impl<T: AddressSpaceOperations> AddressSpaceOperationsVtable<T> {
-
-/// Corresponds to the kernel's `struct adress_space_operations`.
-///
-/// You implement this trait whenever you would create a `struct adress_space_operations`.
-///
-/// File descriptors may be used from multiple threads/processes concurrently, so your type must be
-/// [`Sync`]. It must also be [`Send`] because [`FileOperations::release`] will be called from the
-/// thread that decrements that associated file's refcount to zero.
+    /// Corresponds to the kernel's `struct adress_space_operations`.
+    ///
+    /// You implement this trait whenever you would create a `struct adress_space_operations`.
+    ///
+    /// File descriptors may be used from multiple threads/processes concurrently, so your type must be
+    /// [`Sync`]. It must also be [`Send`] because [`FileOperations::release`] will be called from the
+    /// thread that decrements that associated file's refcount to zero.
     /// The methods to use to populate [`struct adress_space_operations`].
 
     unsafe extern "C" fn write_begin_callback(

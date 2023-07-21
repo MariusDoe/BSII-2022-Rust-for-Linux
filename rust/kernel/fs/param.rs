@@ -4,7 +4,7 @@
 //!
 //! C headers: [`include/linux/fs_parser.h`](../../../../../include/linux/fs_parser.h)
 
-use crate::{bindings, file, fs, str::CStr, error::Result};
+use crate::{bindings, error::Result, file, fs, str::CStr};
 use core::{marker::PhantomData, ptr};
 
 /// The value of a file system parameter.
