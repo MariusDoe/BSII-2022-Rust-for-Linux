@@ -15,7 +15,7 @@ use core::mem::{align_of, size_of, ManuallyDrop, MaybeUninit};
 use core::sync::atomic::{AtomicU64, Ordering};
 use core::time::Duration;
 use core::{
-    cell::UnsafeCell, marker::PhantomData, marker::PhantomPinned, ops::Deref, pin::Pin, ptr,
+    cell::UnsafeCell, marker::PhantomData, marker::PhantomPinned, mem, ops::Deref, pin::Pin, ptr,
 };
 use macros::vtable;
 
@@ -1162,17 +1162,11 @@ impl<T: Type + ?Sized> INode<T> {
         // SAFETY: Add safety annotation.
         unsafe { (*ptr::addr_of!((*ptr).data)).assume_init_ref() }
     }
+}
 
-    /// Creates a reference to a [`INode`] from a valid pointer.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that `ptr` is valid and remains valid for the lifetime of the
-    /// returned [`INode`] instance.
-    pub(crate) unsafe fn from_ptr<'a>(ptr: *const bindings::inode) -> &'a INode<T> {
-        // SAFETY: The safety requirements guarantee the validity of the dereference, while the
-        // `File` type being transparent makes the cast ok.
-        unsafe { &*ptr.cast() }
+impl<T: Type + ?Sized> AsMut<INode<T>> for bindings::inode {
+    fn as_mut(&mut self) -> &mut INode<T> {
+        unsafe { mem::transmute(self) }
     }
 }
 
@@ -1211,19 +1205,12 @@ unsafe impl<T: Type + ?Sized> AlwaysRefCounted for DEntry<T> {
     }
 }
 
-impl<T: Type + ?Sized> DEntry<T> {
-    /// Creates a reference to a [`DEntry`] from a valid pointer.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that `ptr` is valid and remains valid for the lifetime of the
-    /// returned [`DEntry`] instance.
-    pub(crate) unsafe fn from_ptr<'a>(ptr: *const bindings::dentry) -> &'a DEntry<T> {
-        // SAFETY: The safety requirements guarantee the validity of the dereference, while the
-        // `DEntry` type being transparent makes the cast ok.
-        unsafe { &*ptr.cast() }
+impl<T: Type + ?Sized> AsMut<DEntry<T>> for bindings::dentry {
+    fn as_mut(&mut self) -> &mut DEntry<T> {
+        unsafe { mem::transmute(self) }
     }
 }
+
 /// A dentry that is meant to be used as the root of a file system.
 ///
 /// We have a specific type for the root dentry because we may need to do extra work when it is
@@ -1372,7 +1359,7 @@ macro_rules! module_fs {
 ///
 /// struct MyFs;
 ///
-/// impl fs::Type for MyFs {
+/// impl fs::Type for MyFs {AsMut
 ///     type INodeData = &'static [u8];
 ///
 ///     // ...
@@ -1448,7 +1435,7 @@ macro_rules! fs_entries {
             $dev,
         )
     };
-    (@single char($name:literal, $mode:expr, $value:expr, ($major:expr, $minor:expr) $(,)?)) => {
+    (@single char($name:literal, AsMut$mode:expr, $value:expr, ($major:expr, $minor:expr) $(,)?)) => {
         $crate::fs_entries!(
             @single nod($name, $mode, $value, Char, Some($crate::fs::mkdev($major, $minor))))
     };
@@ -1500,6 +1487,18 @@ pub const fn file_creator<T: Type + ?Sized, F: file::Operations<OpenData = T::IN
     file_creator::<T, F>
 }
 
+/// Alias for mnt_idmap
+pub type IdMap = bindings::mnt_idmap;
+/// Alias for iattr
+pub type Iattr = bindings::iattr;
+/// Alias for path
+pub type Path = bindings::path;
+/// Alias for kstat
+pub type Kstat = bindings::kstat;
+/// Alias for dev_t
+pub type Dev = bindings::dev_t;
+
+/// Todo: docs
 pub struct INodeOperationsVtable<A: Type + ?Sized, T>(PhantomData<A>, PhantomData<T>);
 
 /// Corresponds to the kernel's `struct inode_operations`.
@@ -1511,9 +1510,10 @@ pub struct INodeOperationsVtable<A: Type + ?Sized, T>(PhantomData<A>, PhantomDat
 /// thread that decrements that associated file's refcount to zero.
 #[vtable]
 pub trait INodeOperations<T: Type + ?Sized>: Send + Sync + Sized + Default {
+    /// TODO: docs
     fn getattr(
         &self,
-        _mnt_userns: &mut UserNamespace,
+        _mnt_idmap: &mut IdMap,
         _path: &Path,
         _stat: &mut Kstat,
         _request_mask: u32,
@@ -1522,25 +1522,27 @@ pub trait INodeOperations<T: Type + ?Sized>: Send + Sync + Sized + Default {
         Err(EINVAL)
     }
 
+    /// TODO: docs
     fn setattr(
         &self,
-        _mnt_userns: &mut UserNamespace,
+        _mnt_idmap: &mut IdMap,
         _dentry: &mut DEntry<T>,
         _iattr: &mut Iattr,
     ) -> Result {
         Err(EINVAL)
     }
-
+    /// TODO: docs
     fn create(
         &self,
-        _mnt_userns: &mut UserNamespace,
+        _mnt_idmap: &mut IdMap,
         _dir: &mut INode<T>,
         _dentry: &mut DEntry<T>,
-        _mode: Mode,
+        _mode: u16,
         _excl: bool,
     ) -> Result {
         Err(EINVAL)
     }
+    /// TODO: docs
     fn lookup(
         &self,
         _dir: &mut INode<T>,
@@ -1549,6 +1551,7 @@ pub trait INodeOperations<T: Type + ?Sized>: Send + Sync + Sized + Default {
     ) -> Result<*mut DEntry<T>> {
         Err(EINVAL)
     }
+    /// TODO: docs
     fn link(
         &self,
         _old_dentry: &mut DEntry<T>,
@@ -1557,43 +1560,49 @@ pub trait INodeOperations<T: Type + ?Sized>: Send + Sync + Sized + Default {
     ) -> Result {
         Err(EINVAL)
     }
+    /// TODO: docs
     fn unlink(&self, _dir: &mut INode<T>, _dentry: &mut DEntry<T>) -> Result {
         Err(EINVAL)
     }
+    /// TODO: docs
     fn symlink(
         &self,
-        _mnt_userns: &mut UserNamespace,
+        _mnt_idmap: &mut IdMap,
         _dir: &mut INode<T>,
         _dentry: &mut DEntry<T>,
         _symname: &'static CStr,
     ) -> Result {
         Err(EINVAL)
     }
+    /// TODO: docs
     fn mkdir(
         &self,
-        _mnt_userns: &mut UserNamespace,
+        _mnt_idmap: &mut IdMap,
         _dir: &mut INode<T>,
         _dentry: &mut DEntry<T>,
-        _mode: Mode,
+        _mode: u16,
     ) -> Result {
         Err(EINVAL)
     }
+    /// TODO: docs
     fn rmdir(&self, _dir: &mut INode<T>, _dentry: &mut DEntry<T>) -> Result {
         Err(EINVAL)
     }
+    /// TODO: docs
     fn mknod(
         &self,
-        _mnt_userns: &mut UserNamespace,
+        _mnt_idmap: &mut IdMap,
         _dir: &mut INode<T>,
         _dentry: &mut DEntry<T>,
-        _mode: Mode,
+        _mode: u16,
         _dev: Dev,
     ) -> Result {
         Err(EINVAL)
     }
+    /// TODO: docs
     fn rename(
         &self,
-        _mnt_userns: &mut UserNamespace,
+        _mnt_idmap: &mut IdMap,
         _old_dir: &mut INode<T>,
         _old_dentry: &mut DEntry<T>,
         _new_dir: &mut INode<T>,
@@ -1610,22 +1619,22 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
     /// You implement this trait whenever you would create a `struct inode_operations`.
 
     unsafe extern "C" fn setattr_callback(
-        mnt_userns: *mut bindings::mnt_idmap,
+        mnt_idmap: *mut bindings::mnt_idmap,
         dentry: *mut bindings::dentry,
         iattr: *mut bindings::iattr,
     ) -> core::ffi::c_int {
         unsafe {
             let dentry = dentry.as_mut().expect("setattr got null dentry");
-            let inode = dentry.d_inode.as_mut().expect("dentry got null d_inode"); // use d_inode method instead?
-            let i_ops = &*(inode.i_private as *const T);
+            let inode = dentry.d_inode; // use d_inode method instead?
+            let i_ops = &*((*inode).i_private as *const T);
             from_kernel_result! {
-                i_ops.setattr(&mut (*mnt_userns), &mut DEntry::<A>::from_ptr(dentry), &mut (*iattr)).map(|()| 0)
+                i_ops.setattr(&mut (*mnt_idmap), dentry.as_mut(), &mut (*iattr)).map(|()| 0)
             }
         }
     }
 
     unsafe extern "C" fn getattr_callback(
-        mnt_userns: *mut bindings::mnt_idmap,
+        mnt_idmap: *mut bindings::mnt_idmap,
         path: *const bindings::path,
         stat: *mut bindings::kstat,
         request_mask: u32,
@@ -1636,24 +1645,24 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
             let inode = (*dentry).d_inode; // use d_inode method instead?
             let i_ops = &*((*inode).i_private as *const T);
             from_kernel_result! {
-                i_ops.getattr(&mut (*mnt_userns), &(*path), &mut (*stat), request_mask, query_flags).map(|()| 0)
+                i_ops.getattr(&mut (*mnt_idmap), &(*path), &mut (*stat), request_mask, query_flags).map(|()| 0)
             }
         }
     }
 
     unsafe extern "C" fn create_callback(
-        mnt_userns: *mut bindings::mnt_idmap,
+        mnt_idmap: *mut bindings::mnt_idmap,
         dir: *mut bindings::inode,
         dentry: *mut bindings::dentry,
-        mode: ModeInt,
+        mode: u16,
         excl: bool,
     ) -> core::ffi::c_int {
         unsafe {
             let dir = dir.as_mut().expect("create got null dir");
             let i_ops = &*(dir.i_private as *const T);
-            let dentry = DEntry::<A>::from_ptr(dentry);
+            let dentry = dentry.as_mut().expect("create got null dentry");
             from_kernel_result! {
-                i_ops.create(&mut (*mnt_userns), dir, &mut dentry, Mode::from_int(mode), excl).map(|()| 0)
+                i_ops.create(&mut (*mnt_idmap), dir.as_mut(), dentry.as_mut(), mode as _, excl).map(|()| 0)
             }
         }
     }
@@ -1667,7 +1676,7 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
             let i_ops = &*(dir.i_private as *const T);
             let dentry = dentry.as_mut().expect("lookup got null dentry");
             ret_err_ptr! {
-                i_ops.lookup(&mut INode::<A>::from_ptr(dir), &mut DEntry::<A>::from_ptr(dentry), flags).map(|p| p as *mut _)
+                i_ops.lookup(dir.as_mut(), dentry.as_mut(), flags).map(|p| p as *mut _)
             }
         }
     }
@@ -1682,7 +1691,7 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
             let old_dentry = old_dentry.as_mut().expect("link got null old_dentry");
             let dentry = dentry.as_mut().expect("link got null dentry");
             from_kernel_result! {
-                i_ops.link(&mut DEntry::<A>::from_ptr(old_dentry), &mut INode::<A>::from_ptr(dir), &mut DEntry::<A>::from_ptr(dentry)).map(|()| 0)
+                i_ops.link(old_dentry.as_mut(), dir.as_mut(), dentry.as_mut()).map(|()| 0)
             }
         }
     }
@@ -1695,12 +1704,12 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
             let i_ops = &*(dir.i_private as *const T);
             let dentry = dentry.as_mut().expect("unlink got null dentry");
             from_kernel_result! {
-                i_ops.unlink(&mut INode::<A>::from_ptr(dir), &mut DEntry::<A>::from_ptr(dentry)).map(|()| 0)
+                i_ops.unlink(dir.as_mut(), dentry.as_mut()).map(|()| 0)
             }
         }
     }
     unsafe extern "C" fn symlink_callback(
-        mnt_userns: *mut bindings::mnt_idmap,
+        mnt_idmap: *mut bindings::mnt_idmap,
         dir: *mut bindings::inode,
         dentry: *mut bindings::dentry,
         symname: *const core::ffi::c_char,
@@ -1710,22 +1719,22 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
             let i_ops = &*(dir.i_private as *const T);
             let dentry = dentry.as_mut().expect("symlink got null dentry");
             from_kernel_result! {
-                i_ops.symlink(&mut (*mnt_userns), &mut INode::<A>::from_ptr(dir), &mut DEntry::<A>::from_ptr(dentry), CStr::from_char_ptr(symname)).map(|()| 0)
+                i_ops.symlink(&mut (*mnt_idmap), dir.as_mut(), dentry.as_mut(), CStr::from_char_ptr(symname)).map(|()| 0)
             }
         }
     }
     unsafe extern "C" fn mkdir_callback(
-        mnt_userns: *mut bindings::mnt_idmap,
+        mnt_idmap: *mut bindings::mnt_idmap,
         dir: *mut bindings::inode,
         dentry: *mut bindings::dentry,
-        mode: ModeInt,
+        mode: u16,
     ) -> core::ffi::c_int {
         unsafe {
             let dir = dir.as_mut().expect("mkdir got null dir");
             let i_ops = &*(dir.i_private as *const T);
             let dentry = dentry.as_mut().expect("mkdir got null dentry");
             from_kernel_result! {
-                i_ops.mkdir(&mut (*mnt_userns), &mut INode::<A>::from_ptr(dir), &mut DEntry::<A>::from_ptr(dentry), Mode::from_int(mode)).map(|()| 0) // todo: mode_t is u32 but u16 in Mode?
+                i_ops.mkdir(&mut (*mnt_idmap), dir.as_mut(), dentry.as_mut(), mode as _).map(|()| 0) // todo: mode_t is u32 but u16 in Mode?
             }
         }
     }
@@ -1738,15 +1747,15 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
             let i_ops = &*(dir.i_private as *const T);
             let dentry = dentry.as_mut().expect("rmdir got null dentry");
             from_kernel_result! {
-                i_ops.rmdir(&mut INode::<A>::from_ptr(dir), &mut DEntry::<A>::from_ptr(dentry)).map(|()| 0)
+                i_ops.rmdir(dir.as_mut(), dentry.as_mut()).map(|()| 0)
             }
         }
     }
     unsafe extern "C" fn mknod_callback(
-        mnt_userns: *mut bindings::mnt_idmap,
+        mnt_idmap: *mut bindings::mnt_idmap,
         dir: *mut bindings::inode,
         dentry: *mut bindings::dentry,
-        mode: ModeInt,
+        mode: u16,
         dev: bindings::dev_t,
     ) -> core::ffi::c_int {
         unsafe {
@@ -1754,12 +1763,12 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
             let i_ops = &*(dir.i_private as *const T);
             let dentry = dentry.as_mut().expect("mknod got null dentry");
             from_kernel_result! {
-                i_ops.mknod(&mut (*mnt_userns), &mut INode::<A>::from_ptr(dir), &mut DEntry::<A>::from_ptr(dentry), Mode::from_int(mode), dev).map(|()| 0)
+                i_ops.mknod(&mut (*mnt_idmap), dir.as_mut(), dentry.as_mut(), mode, dev).map(|()| 0)
             }
         }
     }
     unsafe extern "C" fn rename_callback(
-        mnt_userns: *mut bindings::mnt_idmap,
+        mnt_idmap: *mut bindings::mnt_idmap,
         old_dir: *mut bindings::inode,
         old_dentry: *mut bindings::dentry,
         new_dir: *mut bindings::inode,
@@ -1773,7 +1782,7 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
             let new_dir = new_dir.as_mut().expect("rename got null dir");
             let new_dentry = new_dentry.as_mut().expect("rename got null dentry");
             from_kernel_result! {
-                i_ops.rename(&mut (*mnt_userns), &mut INode::<A>::from_ptr(old_dir), &mut DEntry::<A>::from_ptr(old_dentry), &mut INode::<A>::from_ptr(new_dir), &mut DEntry::<A>::from_ptr(new_dentry), flags).map(|()| 0)
+                i_ops.rename(&mut (*mnt_idmap), old_dir.as_mut(), old_dentry.as_mut(), new_dir.as_mut(), new_dentry.as_mut(), flags).map(|()| 0)
             }
         }
     }
@@ -1782,17 +1791,17 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
         getattr: if T::HAS_GETATTR {
             Some(Self::getattr_callback)
         } else {
-            None
+            Some(bindings::simple_getattr)
         },
         setattr: if T::HAS_SETATTR {
             Some(Self::setattr_callback)
         } else {
-            None
+            Some(bindings::simple_setattr)
         },
         lookup: if T::HAS_LOOKUP {
             Some(Self::lookup_callback)
         } else {
-            None
+            Some(bindings::simple_lookup)
         },
         get_link: None,
         permission: None,
@@ -1806,12 +1815,12 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
         link: if T::HAS_LINK {
             Some(Self::link_callback)
         } else {
-            None
+            Some(bindings::simple_link)
         },
         unlink: if T::HAS_UNLINK {
             Some(Self::unlink_callback)
         } else {
-            None
+            Some(bindings::simple_unlink)
         },
         symlink: if T::HAS_SYMLINK {
             Some(Self::symlink_callback)
@@ -1826,7 +1835,7 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
         rmdir: if T::HAS_RMDIR {
             Some(Self::rmdir_callback)
         } else {
-            None
+            Some(bindings::simple_rmdir)
         },
         mknod: if T::HAS_MKNOD {
             Some(Self::mknod_callback)
@@ -1836,7 +1845,7 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
         rename: if T::HAS_RENAME {
             Some(Self::rename_callback)
         } else {
-            None
+            Some(bindings::simple_rename)
         },
         listxattr: None,
         fiemap: None,
@@ -1855,7 +1864,7 @@ impl<A: Type + ?Sized, T: INodeOperations<A>> INodeOperationsVtable<A, T> {
     ///
     /// The caller must ensure that the adapter is compatible with the way the device is registered.
 
-    pub(crate) const unsafe fn build() -> &'static bindings::inode_operations {
+    pub const unsafe fn build() -> &'static bindings::inode_operations {
         &Self::VTABLE
     }
 }

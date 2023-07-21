@@ -2,7 +2,7 @@
 #![allow(missing_docs)]
 #![allow(improper_ctypes)]
 
-use core::ffi::{c_longlong, c_uint, c_void};
+use core::ffi::{c_longlong, c_void};
 
 use kernel::{
     bindings,
@@ -12,11 +12,15 @@ use kernel::{
     },
     fs::{
         DEntry,
+        Dev,
         EmptyContext,
         // super_operations::{Kstatfs, SeqFile, SuperOperations},
         // FileSystemBase, FileSystemType,
         INode,
+        INodeOperations,
+        INodeOperationsVtable,
         INodeParams,
+        IdMap,
         NewSuperBlock,
         Super,
         // inode::{UpdateATime, UpdateCTime, UpdateMTime},
@@ -30,8 +34,6 @@ use kernel::{
     module_fs,
     prelude::*,
     str::CStr,
-    // types::{AddressSpace, Dev, Folio, Iattr, Kstat, Page, Path, UserNamespace},
-    // Error, Mode,
 };
 
 const PAGE_SHIFT: u32 = 12; // x86 (maybe)
@@ -95,14 +97,12 @@ impl kernel::Module for BS2Ramfs {
 }
 
 struct RamfsMountOpts {
-    pub(crate) mode: Mode,
+    pub(crate) mode: u16,
 }
 
 impl Default for RamfsMountOpts {
     fn default() -> Self {
-        Self {
-            mode: Mode::from_int(0o775),
-        }
+        Self { mode: 0o775 }
     }
 }
 
@@ -179,76 +179,41 @@ impl AddressSpaceOperations for Bs2RamfsAOps {
 }
 
 #[derive(Default)]
-struct Bs2RamfsFileInodeOps;
+struct BS2RamfsFileINodeOps;
 
-impl InodeOperations for Bs2RamfsFileInodeOps {
-    kernel::declare_inode_operations!(setattr, getattr);
-
-    fn setattr(
-        &self,
-        mnt_userns: &mut UserNamespace,
-        dentry: &mut DEntry,
-        iattr: &mut Iattr,
-    ) -> Result {
-        libfs_functions::simple_setattr(mnt_userns, dentry, iattr)
-    }
-
-    fn getattr(
-        &self,
-        mnt_userns: &mut UserNamespace,
-        path: &Path,
-        stat: &mut Kstat,
-        request_mask: u32,
-        query_flags: u32,
-    ) -> Result {
-        libfs_functions::simple_getattr(mnt_userns, path, stat, request_mask, query_flags)
-    }
+#[vtable]
+impl INodeOperations<BS2Ramfs> for BS2RamfsFileINodeOps {
+    // I'm broken, because bindings::simple_* are used :(
 }
 
 #[derive(Default)]
-struct Bs2RamfsDirInodeOps;
+struct BS2RamfsDirINodeOps;
 
-impl InodeOperations for Bs2RamfsDirInodeOps {
-    kernel::declare_inode_operations!(
-        create, lookup, link, unlink, symlink, mkdir, rmdir, mknod, rename
-    );
-
+#[vtable]
+impl INodeOperations<BS2Ramfs> for BS2RamfsDirINodeOps {
     fn create(
         &self,
-        mnt_userns: &mut UserNamespace,
-        dir: &mut INode,
-        dentry: &mut DEntry,
-        mode: Mode,
+        mnt_userns: &mut IdMap,
+        dir: &mut INode<BS2Ramfs>,
+        dentry: &mut DEntry<BS2Ramfs>,
+        mode: u16,
         _excl: bool,
     ) -> Result {
         pr_emerg!("enter create");
-        self.mknod(mnt_userns, dir, dentry, mode | Mode::S_IFREG, 0)
-    }
-
-    fn lookup(&self, dir: &mut INode, dentry: &mut DEntry, flags: c_uint) -> Result<*mut DEntry> {
-        pr_emerg!("enter lookup");
-        libfs_functions::simple_lookup(dir, dentry, flags) // niklas: This returns 0, but it does so on main too, so it's not the problem
-    }
-
-    fn link(&self, old_dentry: &mut DEntry, dir: &mut INode, dentry: &mut DEntry) -> Result {
-        libfs_functions::simple_link(old_dentry, dir, dentry)
-    }
-
-    fn unlink(&self, dir: &mut INode, dentry: &mut DEntry) -> Result {
-        libfs_functions::simple_unlink(dir, dentry)
+        self.mknod(mnt_userns, dir, dentry, mode | bindings::S_IFREG as _, 0)
     }
 
     fn symlink(
         &self,
-        _mnt_userns: &mut UserNamespace,
-        dir: &mut INode,
-        dentry: &mut DEntry,
+        _mnt_userns: &mut IdMap,
+        dir: &mut INode<BS2Ramfs>,
+        dentry: &mut DEntry<BS2Ramfs>,
         symname: &'static CStr,
     ) -> Result {
         let inode = ramfs_get_inode(
             unsafe { dir.i_sb.as_mut().unwrap().as_mut() },
             Some(dir),
-            Mode::S_IFLNK | Mode::S_IRWXUGO,
+            (bindings::S_IFLNK | bindings::S_IRWXUGO) as _,
             0,
         )
         .ok_or(Error::ENOSPC)?;
@@ -266,29 +231,25 @@ impl InodeOperations for Bs2RamfsDirInodeOps {
 
     fn mkdir(
         &self,
-        mnt_userns: &mut UserNamespace,
-        dir: &mut INode,
-        dentry: &mut DEntry,
-        mode: Mode,
+        mnt_userns: &mut IdMap,
+        dir: &mut INode<BS2Ramfs>,
+        dentry: &mut DEntry<BS2Ramfs>,
+        mode: u16,
     ) -> Result {
         pr_emerg!("enter mkdir");
-        if let Err(_) = self.mknod(mnt_userns, dir, dentry, mode | Mode::S_IFDIR, 0) {
+        if let Err(_) = self.mknod(mnt_userns, dir, dentry, mode | bindings::S_IFDIR as _, 0) {
             pr_emerg!("mkdir: inc_nlink");
             dir.inc_nlink();
         }
         Ok(())
     }
 
-    fn rmdir(&self, dir: &mut INode, dentry: &mut DEntry) -> Result {
-        libfs_functions::simple_rmdir(dir, dentry)
-    }
-
     fn mknod(
         &self,
-        _mnt_userns: &mut UserNamespace,
-        dir: &mut INode,
-        dentry: &mut DEntry,
-        mode: Mode,
+        _mnt_userns: &mut IdMap,
+        dir: &mut INode<BS2Ramfs>,
+        dentry: &mut DEntry<BS2Ramfs>,
+        mode: u16,
         dev: Dev,
     ) -> Result {
         // todo: write some kind of wrapper
@@ -306,30 +267,21 @@ impl InodeOperations for Bs2RamfsDirInodeOps {
             ()
         })
     }
-    fn rename(
-        &self,
-        mnt_userns: &mut UserNamespace,
-        old_dir: &mut INode,
-        old_dentry: &mut DEntry,
-        new_dir: &mut INode,
-        new_dentry: &mut DEntry,
-        flags: c_uint,
-    ) -> Result {
-        libfs_functions::simple_rename(mnt_userns, old_dir, old_dentry, new_dir, new_dentry, flags)
-    }
 }
 
 pub fn ramfs_get_inode<'a>(
-    sb: &'a mut SuperBlock,
-    dir: Option<&'_ mut INode>,
-    mode: Mode,
+    sb: &'a mut SuperBlock<BS2Ramfs>,
+    dir: Option<&'_ mut INode<BS2Ramfs>>,
+    mode: u16,
     dev: bindings::dev_t,
-) -> Option<&'a mut INode> {
+) -> Option<&'a mut INode<BS2Ramfs>> {
     INode::new(sb).map(|inode| {
-        inode.i_ino = INode::next_ino() as _;
+        inode.i_ino = INode::<BS2Ramfs>::next_ino() as _;
         inode.init_owner(unsafe { &mut bindings::init_user_ns }, dir, mode);
 
-        inode.set_address_space_operations(&AddressSpaceOperationsVtable::<Bs2RamfsAOps>::build());
+        inode.set_address_space_operations(unsafe {
+            AddressSpaceOperationsVtable::<Bs2RamfsAOps>::build()
+        }); // TODO: this should be done inside set_address_space_operations
 
         // I think these should be functions on the AddressSpace, i.e. sth like inode.get_address_space().set_gfp_mask(...)
         unsafe {
@@ -338,19 +290,20 @@ pub fn ramfs_get_inode<'a>(
         }
 
         inode.update_acm_time(UpdateATime::Yes, UpdateCTime::Yes, UpdateMTime::Yes);
-        match mode & Mode::S_IFMT {
-            Mode::S_IFREG => {
-                static I_OPS: Bs2RamfsFileInodeOps = Bs2RamfsFileInodeOps;
+        match mode as _ & bindings::S_IFMT {
+            bindings::S_IFREG => {
+                static I_OPS: bindings::inode_operations =
+                    unsafe { *INodeOperationsVtable::<BS2Ramfs, BS2RamfsFileINodeOps>::build() }; // TODO: this should be done inside set_inode_operations
                 inode.set_inode_operations(&I_OPS);
                 inode.set_file_operations::<Bs2RamfsFileOps>();
             }
-            Mode::S_IFDIR => {
-                static I_OPS: Bs2RamfsDirInodeOps = Bs2RamfsDirInodeOps;
+            bindings::S_IFDIR => {
+                static I_OPS: BS2RamfsDirINodeOps = BS2RamfsDirINodeOps;
                 inode.set_inode_operations(&I_OPS);
                 inode.set_file_operations::<SimpleDirOperations>();
                 inode.inc_nlink();
             }
-            Mode::S_IFLNK => {
+            bindings::S_IFLNK => {
                 static I_OPS: PageSymlinkInodeOperations = PageSymlinkInodeOperations;
                 inode.set_inode_operations(&I_OPS);
                 inode.nohighmem();
