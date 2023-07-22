@@ -921,6 +921,9 @@ pub type AddressSpace = bindings::address_space;
 pub type Page = bindings::page;
 pub type Folio = bindings::folio;
 
+pub type SeqFile = bindings::seq_file;
+pub type Kstatfs = bindings::kstatfs;
+
 #[vtable]
 pub trait AddressSpaceOperations: Send + Sync + Sized + Default {
     /// The methods to use to populate [`struct adress_space_operations`].

@@ -2,13 +2,17 @@
 #![allow(missing_docs)]
 #![allow(improper_ctypes)]
 
-use core::ffi::{c_longlong, c_void};
+use core::ffi::{
+    c_longlong, 
+    //c_void
+};
 
 use kernel::{
     bindings,
     file::{
-        AddressSpace, AddressSpaceOperations, AddressSpaceOperationsVtable, File, Folio,
-        Operations, Page,
+        AddressSpaceOperations, AddressSpaceOperationsVtable, File,
+        Operations, 
+        //AddressSpace, Folio, Page, Kstatfs, SeqFile,
     },
     fs::{
         DEntry,
@@ -20,6 +24,7 @@ use kernel::{
         INodeOperations,
         INodeOperationsVtable,
         INodeParams,
+        UpdateATime, UpdateCTime, UpdateMTime,
         IdMap,
         NewSuperBlock,
         Super,
@@ -29,6 +34,7 @@ use kernel::{
         // libfs_functions::{self, PageSymlinkInodeOperations, SimpleDirOperations},
         SuperBlock,
         SuperParams,
+        libfs_functions,
         Type,
     },
     module_fs,
@@ -122,7 +128,7 @@ impl Operations for Bs2RamfsFileOps {
 struct Bs2RamfsSuperOps {
     mount_opts: RamfsMountOpts,
 }
-
+/*
 impl SuperOperations for Bs2RamfsSuperOps {
     fn drop_inode(&self, inode: &mut INode) -> Result {
         libfs_functions::generic_delete_inode(inode)
@@ -137,13 +143,14 @@ impl SuperOperations for Bs2RamfsSuperOps {
         Ok(())
     }
 }
+*/
 
 #[derive(Default)]
 struct Bs2RamfsAOps;
 
 #[vtable]
 impl AddressSpaceOperations for Bs2RamfsAOps {
-    fn readpage(&self, file: &File, page: &mut Page) -> Result {
+   /* fn readpage(&self, file: &File, page: &mut Page) -> Result {
         libfs_functions::simple_readpage(file, page)
     }
 
@@ -175,7 +182,7 @@ impl AddressSpaceOperations for Bs2RamfsAOps {
 
     fn dirty_folio(&self, address_space: &mut AddressSpace, folio: &mut Folio) -> Result<bool> {
         Ok(libfs_functions::filemap_dirty_folio(address_space, folio))
-    }
+    }*/
 }
 
 #[derive(Default)]
@@ -292,19 +299,20 @@ pub fn ramfs_get_inode<'a>(
         inode.update_acm_time(UpdateATime::Yes, UpdateCTime::Yes, UpdateMTime::Yes);
         match mode as _ & bindings::S_IFMT {
             bindings::S_IFREG => {
-                static I_OPS: bindings::inode_operations =
-                    unsafe { *INodeOperationsVtable::<BS2Ramfs, BS2RamfsFileINodeOps>::build() }; // TODO: this should be done inside set_inode_operations
+                static I_OPS: &bindings::inode_operations =
+                    unsafe { INodeOperationsVtable::<BS2Ramfs, BS2RamfsFileINodeOps>::build() }; // TODO: this should be done inside set_inode_operations
                 inode.set_inode_operations(&I_OPS);
                 inode.set_file_operations::<Bs2RamfsFileOps>();
             }
             bindings::S_IFDIR => {
-                static I_OPS: BS2RamfsDirINodeOps = BS2RamfsDirINodeOps;
+                static I_OPS: &bindings::inode_operations =
+                    unsafe { INodeOperationsVtable::<BS2Ramfs, BS2RamfsDirINodeOps>::build() };
                 inode.set_inode_operations(&I_OPS);
-                inode.set_file_operations::<SimpleDirOperations>();
+                inode.set_file_operations(bindings::simple_dir_operations);
                 inode.inc_nlink();
             }
             bindings::S_IFLNK => {
-                static I_OPS: PageSymlinkInodeOperations = PageSymlinkInodeOperations;
+                static I_OPS: bindings::inode_operations = bindings::page_symlink_inode_operations;
                 inode.set_inode_operations(&I_OPS);
                 inode.nohighmem();
             }

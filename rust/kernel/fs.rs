@@ -20,6 +20,7 @@ use core::{
 use macros::vtable;
 
 pub mod param;
+pub mod libfs_functions;
 
 /// Type of superblock keying.
 ///
@@ -1182,6 +1183,34 @@ unsafe impl<T: Type + ?Sized> AlwaysRefCounted for INode<T> {
         unsafe { bindings::iput(obj.cast().as_ptr()) }
     }
 }
+
+/// Update the accressed time
+#[derive(PartialEq, Eq)]
+pub enum UpdateATime {
+    /// update it
+    Yes,
+    /// do not update it
+    No,
+}
+
+/// Update the created time
+#[derive(PartialEq, Eq)]
+pub enum UpdateCTime {
+    /// update it
+    Yes,
+    /// do not update it
+    No,
+}
+
+/// Update the modified time
+#[derive(PartialEq, Eq)]
+pub enum UpdateMTime {
+    /// update it
+    Yes,
+    /// do not update it
+    No,
+}
+
 
 /// Wraps the kernel's `struct dentry`.
 ///
