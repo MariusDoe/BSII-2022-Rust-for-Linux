@@ -382,8 +382,8 @@ pub fn hlist_add_head(n: &mut bindings::hlist_node, h: &mut bindings::hlist_head
     }
 }
 
-pub fn sb_find_get_block(sb: &mut SuperBlock, block: bindings::sector_t) -> Option<&mut BufferHead> {
-    unsafe { rust_helper_sb_find_get_block(sb.as_ptr_mut(), block).as_mut() }.map(AsMut::as_mut)
+pub fn sb_find_get_block(sb: &SuperBlock, block: bindings::sector_t) -> Option<&mut BufferHead> {
+    unsafe { rust_helper_sb_find_get_block(sb as *const SuperBlock as *mut bindings::super_block, block).as_mut() }.map(AsMut::as_mut)
 }
 
 pub fn buffer_uptodate(buffer_head: &mut BufferHead) -> bool {

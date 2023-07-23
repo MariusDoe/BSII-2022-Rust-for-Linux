@@ -788,11 +788,11 @@ inline struct buffer_head *rust_helper_sb_find_get_block(struct super_block *sb,
 }
 EXPORT_SYMBOL_GPL(rust_helper_sb_find_get_block);
 
-inline int rust_helper_buffer_upto_date(struct buffer_head *bh)
+inline int rust_helper_buffer_uptodate(struct buffer_head *bh)
 {
 	return buffer_uptodate(bh);
 }
-EXPORT_SYMBOL_GPL(rust_helper_buffer_upto_date);
+EXPORT_SYMBOL_GPL(rust_helper_buffer_uptodate);
 
 inline void rust_helper_sb_breadahead(struct super_block *sb, sector_t block)
 {
