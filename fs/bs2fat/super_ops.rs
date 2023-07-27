@@ -2,10 +2,12 @@ use core::ops::{Deref, DerefMut};
 
 use kernel::{
     bindings::{self, hlist_node, hlist_head, fatent_operations},
-    fs::{inode::Inode, super_block::SuperBlock, super_operations::SuperOperations},
+    fs::{inode::Inode, super_block::SuperBlock, super_operations::SuperOperations, BuildVtable},
     print::ExpectK,
-    sync::Mutex,
+    sync::Mutex, c_types::c_void,
+    
 };
+use crate::BS2FatDirInodeOps;
 
 use crate::{time::SECS_PER_MIN, FAT12_MAX_CLUSTERS, FAT16_MAX_CLUSTERS};
 
@@ -42,7 +44,7 @@ impl BS2FatSuperOps {
     /// # Safety
     ///
     /// The caller must call [`Mutex::init_lock`] on all mutexes before using them.
-    pub(crate) unsafe fn new_from_info(info: BS2FatSuperInfo) -> Self {
+    pub(crate) unsafe fn new_from_info(mut info: BS2FatSuperInfo) -> Self {
         // SAFETY: guaranteed by caller
         let mutex = unsafe { BS2FatSuperMutex::new_uninit() };
         Self { info, mutex }
@@ -63,8 +65,56 @@ impl DerefMut for BS2FatSuperOps {
     }
 }
 
+
+
 /// Contains various information describing the file system
-#[derive(Default)]
+/// original implementation:
+/// 
+/*
+struct msdos_sb_info {
+	unsigned short sec_per_clus;  /* sectors/cluster */
+	unsigned short cluster_bits;  /* log2(cluster_size) */
+	unsigned int cluster_size;    /* cluster size */
+	unsigned char fats, fat_bits; /* number of FATs, FAT bits (12,16 or 32) */
+	unsigned short fat_start;
+	unsigned long fat_length;     /* FAT start & length (sec.) */
+	unsigned long dir_start;
+	unsigned short dir_entries;   /* root dir start & entries */
+	unsigned long data_start;     /* first data sector */
+	unsigned long max_cluster;    /* maximum cluster number */
+	unsigned long root_cluster;   /* first cluster of the root directory */
+	unsigned long fsinfo_sector;  /* sector number of FAT32 fsinfo */
+	struct mutex fat_lock;
+	struct mutex nfs_build_inode_lock;
+	struct mutex s_lock;
+	unsigned int prev_free;      /* previously allocated cluster number */
+	unsigned int free_clusters;  /* -1 if undefined */
+	unsigned int free_clus_valid; /* is free_clusters valid? */
+	struct fat_mount_options options;
+	struct nls_table *nls_disk;   /* Codepage used on disk */
+	struct nls_table *nls_io;     /* Charset used for input and display */
+	const void *dir_ops;	      /* Opaque; default directory operations */
+	int dir_per_block;	      /* dir entries per block */
+	int dir_per_block_bits;	      /* log2(dir_per_block) */
+	unsigned int vol_id;		/*volume ID*/
+
+	int fatent_shift;
+	const struct fatent_operations *fatent_ops;
+	struct inode *fat_inode;
+	struct inode *fsinfo_inode;
+
+	struct ratelimit_state ratelimit;
+
+	spinlock_t inode_hash_lock;
+	struct hlist_head inode_hashtable[FAT_HASH_SIZE];
+
+	spinlock_t dir_hash_lock;
+	struct hlist_head dir_hashtable[FAT_HASH_SIZE];
+
+	unsigned int dirty;           /* fs state before mount */
+	struct rcu_head rcu;
+}; */
+#[repr(C)]
 pub(crate) struct BS2FatSuperInfo {
     pub(crate) sectors_per_cluster: u16,
     pub(crate) cluster_bits: u16,
@@ -75,7 +125,7 @@ pub(crate) struct BS2FatSuperInfo {
     /// 12, 16 (, 32)
     pub(crate) fat_bits: u8,
     pub(crate) fat_start: u16,
-    pub(crate) fat_length: u16,
+    pub(crate) fat_length: usize,
 
     pub(crate) dir_start: usize,
     pub(crate) dir_entries: u16,
@@ -84,12 +134,23 @@ pub(crate) struct BS2FatSuperInfo {
 
     /// maximum cluster number
     pub(crate) max_cluster: usize,
-    pub(crate) root_cluster: isize,
+    pub(crate) root_cluster: usize,
+
+    //these 3 should be removed, but are still needed for alignment with C calls on it
+    pub(crate) fat_lock: bindings::mutex,
+    pub(crate) nfs_build_inode_lock: bindings::mutex,
+    pub(crate) s_lock: bindings::mutex,
+
     pub(crate) previous_free: u32,
+
     pub(crate) free_clusters: u32, /* C sets this to -1 sometimes, we probably want to use u32::MAX for that */
     pub(crate) free_clusters_valid: u32,
 
     pub(crate) options: BS2FatMountOptions,
+    pub(crate) nls_disk: usize, //alignment
+    pub(crate) nls_io: usize,
+
+    pub(crate) dir_ops: *const bindings::inode_operations,
 
     /// directory entries per block
     pub(crate) dir_per_block: i32,
@@ -97,21 +158,44 @@ pub(crate) struct BS2FatSuperInfo {
 
     pub(crate) volume_id: u32,
 
-    pub(crate) fat_inode: Option<*mut Inode>,
-    pub(crate) fsinfo_inode: Option<*mut Inode>,
+    pub(crate) fatent_shift: i32,
+    pub(crate) fatent_ops: *const fatent_operations,
 
+    pub(crate) fat_inode: *mut Inode,
+    pub(crate) fsinfo_inode: *mut Inode,
+
+    pub(crate) ratelimit: bindings::ratelimit_state, //alignment
     /// fs state before mount
-    pub(crate) dirty: u32,
 
     pub(crate) hashtables: BS2FatSuperHashtables,
 
-    pub(crate) fatent_ops: Option<*const fatent_operations>,
-    pub(crate) fatent_shift: i32,
+    pub(crate) dirty: u32,
+    // pub(crate) rcu: bindings::rcu_head, replaced by two pointers to imitate size.
+    pub(crate) rcu1: *const c_void,
+    pub(crate) rcu2: *const c_void,
+
+
     
 }
 
+impl Default for BS2FatSuperInfo {
+    fn default() -> Self {
+        use core::mem::zeroed;
+        Self {
+            fat_lock: unsafe {zeroed()},
+            nfs_build_inode_lock: unsafe {zeroed()},
+            s_lock: unsafe {zeroed()},
+            dir_ops: BS2FatDirInodeOps::build_vtable() as *const _,
+            ..unsafe {zeroed()}
+        }
+    }
+}
+
+#[repr(C)]
 pub (crate) struct BS2FatSuperHashtables {
+    pub(crate) inode_hash_lock: bindings::spinlock_t, //alignment
     pub(crate) inode_hashtable: [hlist_head; FAT_HASH_SIZE],
+    pub(crate) dir_hash_lock: bindings::spinlock_t, //alignment
     pub(crate) dir_hashtable: [hlist_head; FAT_HASH_SIZE],
 }
 

@@ -89,6 +89,7 @@ impl Inode {
         Mode::from_int(self.i_mode)
     }
 
+    #[inline]
     pub fn super_block(&self) -> &SuperBlock {
         unsafe {
             self.i_sb
@@ -97,7 +98,7 @@ impl Inode {
                 .as_mut()
         }
     }
-
+    #[inline]
     pub fn super_block_mut<'this, 'ret>(&'this mut self) -> &'ret mut SuperBlock {
         unsafe {
             self.i_sb

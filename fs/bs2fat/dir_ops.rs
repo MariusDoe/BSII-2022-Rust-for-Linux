@@ -133,3 +133,13 @@ impl Operations for BS2FatDirOps {
         todo!("fsync")
     }
 } */
+
+
+/* #[derive(Default)]
+pub(crate) struct BS2FatDentryOps;
+
+impl DentryOperations for BS2FatDentryOps {
+    kernel::declare_dentry_operations!(
+        d_cmp, d_hash
+    );
+} */
